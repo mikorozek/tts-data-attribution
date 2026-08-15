@@ -11,8 +11,14 @@ requires-python = ">=3.11"
 license = { text = "Research code license TBD" }
 dependencies = ["numpy>=1.26", "torch>=2.0"]
 
+[project.scripts]
+tda = "tts_data_attribution.cli:main"
+
 [dependency-groups]
-data = ["gdown==6.1.0"]
+qwen = ["qwen-tts"]
+
+[tool.uv.sources]
+qwen-tts = { path = "third_party/Qwen3-TTS", editable = true }
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/tts_data_attribution"]

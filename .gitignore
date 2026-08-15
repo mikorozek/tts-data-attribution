@@ -69,6 +69,9 @@ slurm-*.err
 /artifacts/checkpoints/
 /artifacts/outputs/
 
+# Local experiment workspaces: configs, plans, materialized data, and runs
+/experiments/
+
 # Hugging Face and other local downloader caches
 **/.cache/huggingface/
 

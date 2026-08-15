@@ -108,15 +108,15 @@ A new experimental variant should normally require a new consumed configuration 
 ## Separation of repository roles
 
 ```text
-src/tts_data_attribution/  importable implementation
-scripts/                   executable local and remote commands
+src/tts_data_attribution/  importable implementation, including the tda CLI
 references/                provenance, papers, checksums, and licenses
 third_party/               pinned vendored upstream source
 tests/                     executable behavior checks
-data/ and artifacts/       ignored runtime files
+data/ and artifacts/       ignored source dataset and model assets
+experiments/               ignored local experiment workspaces
 ```
 
-Add a module, script, or configuration only with its first concrete consumer. Importable implementation must not depend on command-line scripts. Scripts compose reusable implementation. Tracked configurations belong in `configs/` once an implemented command consumes them.
+Add a module, command, or configuration only with its first concrete consumer. The `tda` CLI package only parses arguments and composes reusable implementation; dataset, model, and training logic must stay importable and testable without it. An experiment configuration lives inside its experiment directory under `experiments/`, next to the plan, materialized data, and run outputs derived from it. Experiment workspaces are local and never tracked; each run stays reproducible through the resolved manifest saved with it.
 
 ## Repository map
 
@@ -126,8 +126,9 @@ README.md                  human-facing framework overview
 docs/specs/                reviewed framework interface specifications
 src/tts_data_attribution/  reusable framework and optional integrations
 references/                core papers, source manifests, and licenses
-data/                      ignored raw/processed data plus tracked generic manifests
-artifacts/                 ignored model snapshots, gradients, checkpoints, and runs
+data/                      ignored source dataset assets and derived dataset products
+artifacts/                 ignored downloaded upstream model assets
+experiments/               ignored local experiment workspaces: config, plan, data, runs
 third_party/               pinned vendored upstream source and documented project patches
 tests/                     unit, integration, and reproducibility tests
 ```

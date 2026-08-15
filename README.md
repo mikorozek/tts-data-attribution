@@ -24,37 +24,39 @@ any scaled run.
 
 ## Repository roles
 
-- `src/tts_data_attribution/` contains importable implementation.
-- `scripts/` contains commands intended for local and remote execution.
+- `src/tts_data_attribution/` contains importable implementation, including the `tda` CLI.
 - `references/` contains immutable provenance, papers, checksums, and licenses.
 - `third_party/` contains pinned vendored upstream source.
 - `tests/` contains executable behavior checks.
-- `data/` and `artifacts/` contain ignored runtime files.
-- `configs/` will be created when the first implemented command consumes a configuration.
+- `data/` contains ignored source dataset assets and derived dataset products.
+- `artifacts/` contains ignored downloaded upstream model assets.
+- `experiments/` contains ignored local experiment workspaces: configuration, plan, materialized training data, and run outputs.
 
-## DailyTalk download
+## Providing the dataset
 
-The official DailyTalk distribution is a 5,341,371,062-byte Google Drive archive
-that expands to 6,908,762,531 bytes. Allow at least 15 GB of free disk space
-during extraction.
+Obtaining the dataset is the user's responsibility. Place the extracted
+DailyTalk distribution at `data/raw/dailytalk` and verify it against the
+sizes and checksums recorded in [`references/sources.yaml`](references/sources.yaml).
 
-```bash
-uv run --group data python scripts/download_dailytalk.py
-```
+## CLI
 
-Use `--data-root` and `--archive` to place the extracted dataset and temporary
-archive on suitable remote storage. The archive is removed after successful
-extraction unless `--keep-archive` is provided.
-
-Create the framework JSONL index with:
+The package installs the `tda` command, the single user surface of the
+framework. Prepare a provided dataset with:
 
 ```bash
-uv run python scripts/index_dailytalk.py
+uv run --group qwen tda data encode dailytalk
 ```
+
+One invocation parses the source layout and encodes every utterance with the
+pinned 12Hz tokenizer. It writes complete utterance records to
+`data/processed/dailytalk_encoded.jsonl` and a manifest with its content hash.
+The command validates the dataset layout, checks every code shape and frame
+count, and resumes after interruption by skipping already-encoded IDs.
 
 `DailyTalkDataset` reads the per-utterance transcript files, preserves dialogue
 and speaker groups, and carries the source topic, emotion, and dialogue act as
-metadata. Both commands accept explicit paths for remote storage.
+metadata. The full command surface, including the planned experiment commands,
+is specified in [`docs/specs/cli.md`](docs/specs/cli.md).
 
 ## Dataset API
 
