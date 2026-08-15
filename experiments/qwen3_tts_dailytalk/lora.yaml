@@ -1,9 +1,6 @@
 schema_version: 1
 status: preliminary
 
-# LoRA targets are resolved from the loaded model at runtime. This file may be
-# copied to define narrower or broader adapter-placement experiments without
-# changing Python source code.
 targeting:
   allowed_components:
     - generative_transformer_core

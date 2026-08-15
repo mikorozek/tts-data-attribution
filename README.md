@@ -20,31 +20,29 @@ Large assets are excluded from Git:
 
 Core papers are stored under `references/papers/`. Experiment-specific asset download and source information live inside each experiment directory.
 
-## Dataset integration MVP
+## Dataset integration
 
-Framework core currently provides one small dependency-injection boundary:
-`DatasetExample`, a `DatasetIntegration.prepare()` protocol, JSONL read/write
-helpers, and the one-line `prepare_dataset` composition. There is no integration
-registry, multi-file manifest lifecycle, or production synthetic dataset.
-Concrete integrations, including DailyTalk, remain deferred until an experiment
-needs them.
+`DatasetExample` represents one model-independent example. `AttributionDataset`
+stores examples, implements `torch.utils.data.Dataset`, and reads or writes
+JSONL without a custom validation layer or integration protocol.
 
 ```python
-from tts_data_attribution.core import DatasetExample, prepare_dataset
+from tts_data_attribution.dataset import DatasetExample, AttributionDataset
 
-
-class MyDataset:
-    def prepare(self):
-        yield DatasetExample(
+examples = AttributionDataset(
+    [
+        DatasetExample(
             id="conversation-1/turn-1",
             payload={"audio_path": "audio/turn-1.wav", "text": "Hello"},
             groups={"conversation": "conversation-1"},
         )
-
-
-prepare_dataset(MyDataset(), "data/manifests/examples.jsonl")
+    ]
+)
+examples.to_jsonl("data/manifests/examples.jsonl")
 ```
 
-Interface and format: [`docs/specs/dataset-integration.md`](docs/specs/dataset-integration.md).
-Model loading, dataset-specific integrations, splits, gradients, and attribution
-remain deferred.
+Concrete integrations live under `tts_data_attribution.integrations`. The
+interface is specified in
+[`docs/specs/dataset-integration.md`](docs/specs/dataset-integration.md).
+DailyTalk integration, model loading, splits, gradients, and attribution remain
+to be implemented.

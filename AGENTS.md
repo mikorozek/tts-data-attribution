@@ -109,8 +109,7 @@ A new experimental variant should normally require a new configuration or integr
 
 ```text
 src/tts_data_attribution/
-├── core/             shared types, configuration, manifests, and interfaces
-├── data/             dataset-agnostic split/mask utilities
+├── dataset/          generic examples, PyTorch datasets, and persistence
 ├── models/           generic model factories and parameter selection
 ├── objectives/       generic objective/response plumbing
 ├── gradients/        per-example gradient collection and storage
@@ -123,7 +122,7 @@ experiments/
 └── <experiment>/     experiment-owned configs, sources, scripts, and documentation
 ```
 
-Framework-core modules must not import a concrete integration or experiment. Integrations may depend on the framework core. Experiments compose integrations and framework components through configuration.
+Reusable framework modules must not import a concrete integration or experiment. Integrations may depend on reusable framework modules. Experiments compose integrations and framework components through configuration.
 
 ## Repository map
 
@@ -146,6 +145,9 @@ Experiment-specific model links, dataset links, protocols, local asset paths, an
 ## Repository rules
 
 - Keep source, configuration keys, tests, and technical documentation in English.
+- Do not add comments or docstrings to project-owned code or tests.
+- Make code self-documenting through precise names, explicit types, and small focused units.
+- Put construction and serialization behavior on the domain type it belongs to; reserve module-level functions for behavior that has no natural owner.
 - Keep large data, weights, optimizer states, checkpoints, gradient features, generated media, and run logs out of Git.
 - Never silently update pinned upstream code or artifacts.
 - Prefer integration wrappers, but direct changes to vendored upstream source are allowed when required. Keep them minimal, preserve licenses and upstream provenance, document every change in that vendor directory, and cover changed behavior with tests.

@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-"""Download and verify pinned paper PDFs."""
-
 from __future__ import annotations
 
 import hashlib
@@ -9,7 +7,16 @@ from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parents[1] / "references" / "papers"
 DEST = ROOT
-PAPERS = {'trackstar-2410.17413v3.pdf': {'url': 'https://arxiv.org/pdf/2410.17413v3', 'sha256': 'fccf4e0d9a3ec9475bc0e73c5e12de6c468615f8887e605e39455f4a12accb8c'}, 'trak-2303.14186v2.pdf': {'url': 'https://arxiv.org/pdf/2303.14186v2', 'sha256': '407fc348aa2e2b22a2a5f279924d78413e04c0a8e7b61c891b013aa9cafc6993'}}
+PAPERS = {
+    "trackstar-2410.17413v3.pdf": {
+        "url": "https://arxiv.org/pdf/2410.17413v3",
+        "sha256": "fccf4e0d9a3ec9475bc0e73c5e12de6c468615f8887e605e39455f4a12accb8c",
+    },
+    "trak-2303.14186v2.pdf": {
+        "url": "https://arxiv.org/pdf/2303.14186v2",
+        "sha256": "407fc348aa2e2b22a2a5f279924d78413e04c0a8e7b61c891b013aa9cafc6993",
+    },
+}
 
 
 def sha256(path: Path) -> str:
@@ -27,7 +34,9 @@ def main() -> None:
         if target.exists() and sha256(target) == spec["sha256"]:
             print(f"ok: {filename}")
             continue
-        request = Request(spec["url"], headers={"User-Agent": "tts-data-attribution-research/0.1"})
+        request = Request(
+            spec["url"], headers={"User-Agent": "tts-data-attribution-research/0.1"}
+        )
         with urlopen(request, timeout=120) as response:
             content = response.read()
         if not content.startswith(b"%PDF"):

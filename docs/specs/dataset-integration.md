@@ -1,32 +1,26 @@
-# Dataset Integration MVP
+# Dataset Integration
 
 Status: **implemented; intentionally small**
 
 ## Scope
 
-A dataset integration converts its configured source into framework-shaped
-examples. The framework persists those examples in one JSONL file:
+A concrete dataset integration converts its source into model-independent
+`DatasetExample` values. `AttributionDataset` stores those values, implements the
+PyTorch dataset interface, and optionally persists them as JSONL.
 
 ```text
-raw dataset → integration.prepare() → Iterable[DatasetExample] → examples.jsonl
+raw dataset → concrete integration → AttributionDataset → PyTorch DataLoader
+                                      ↕
+                                examples.jsonl
 ```
 
-This boundary exists to keep dataset-specific parsing out of framework core and
-to let a new integration be supplied without modifying the writer or later
-experiment components (the Open/Closed Principle). It is not a plugin system or
-a dataset orchestration layer.
-
-The implementation is `tts_data_attribution.core.dataset` and is re-exported
-from `tts_data_attribution.core`.
+The generic dataset types live in `tts_data_attribution.dataset`. Concrete
+source parsing lives in `tts_data_attribution.integrations`.
 
 ## API
 
 ```python
-JsonScalar = None | bool | int | float | str
-JsonValue = JsonScalar | list["JsonValue"] | dict[str, "JsonValue"]
-
-
-@frozen
+@dataclass(frozen=True)
 class DatasetExample:
     id: str
     payload: Mapping[str, JsonValue]
@@ -34,47 +28,31 @@ class DatasetExample:
     metadata: Mapping[str, JsonValue] | None = None
 
 
-class DatasetIntegration(Protocol):
-    def prepare(self) -> Iterable[DatasetExample]: ...
+class AttributionDataset(torch.utils.data.Dataset[DatasetExample]):
+    def __init__(self, examples: Iterable[DatasetExample]) -> None: ...
 
+    @classmethod
+    def from_jsonl(cls, path: str | Path) -> Self: ...
 
-def write_examples_jsonl(
-    examples: Iterable[DatasetExample], path: str | Path
-) -> None: ...
+    def to_jsonl(self, path: str | Path) -> None: ...
 
+    def __len__(self) -> int: ...
 
-def read_examples_jsonl(path: str | Path) -> Iterator[DatasetExample]: ...
-
-
-def prepare_dataset(
-    integration: DatasetIntegration, output_path: str | Path
-) -> None: ...
+    def __getitem__(self, index: int) -> DatasetExample: ...
 ```
 
-`prepare_dataset` is only the composition
-`write_examples_jsonl(integration.prepare(), output_path)`.
-
-`DatasetFormatError` is the single format exception raised for invalid example
-shapes, malformed JSONL, non-finite numbers, and duplicate IDs.
+`AttributionDataset` is already a PyTorch dataset. It can be passed directly to a
+`DataLoader` without an adapter. Model-specific loading, transforms, collation,
+and tensor construction remain separate concerns.
 
 ## Example contract
 
-- `id` is a non-empty string that the integration keeps stable across repeated
-  preparation of the same logical example. Row numbers and absolute local paths
-  are not stable IDs.
-- `payload` is a JSON object whose dataset-specific keys and semantics belong
-  to the integration. Model inputs, targets, transcripts, and asset references
-  can be represented here without adding types to framework core.
-- `groups`, when present, maps grouping-key names to string identities used by
-  later splitting code to prevent leakage (for example, conversation or
-  speaker IDs).
-- `metadata`, when present, is a JSON object for descriptive values that are not
-  the primary model input or target.
-- Paths in `payload` are portable strings, normally paths relative to a separately
-  configured dataset root. `Path` objects and absolute machine-local roots are
-  not JSON values and must not be persisted.
-
-For example:
+- `id` identifies the same logical example across repeated indexing runs.
+- `payload` contains model-independent inputs, targets, and asset references.
+- `groups` contains identities used later to prevent split leakage.
+- `metadata` contains optional descriptive values.
+- Paths are portable strings, normally relative to a separately configured
+  dataset root.
 
 ```python
 DatasetExample(
@@ -88,38 +66,38 @@ DatasetExample(
 )
 ```
 
-The integration owns source access, dataset-specific validation, filtering, and
-preparation. It may be configured through its constructor or another
-experiment-owned mechanism; the core API does not discover or register it.
-
 ## JSONL behavior
 
-Each line is one JSON object with required `id` and `payload` fields. `groups` and
-`metadata` are omitted when they are `None`. Object keys are sorted and output
-uses UTF-8, so the same ordered examples produce stable bytes. Example order is
-the integration's responsibility and is not changed by the writer.
+`AttributionDataset.from_jsonl()` decodes every line with `json.loads()` and passes
+the resulting mapping directly to the generated dataclass constructor:
 
-Both the reader and writer reject duplicate IDs. The reader also reports the
-file and line for malformed rows. The writer writes directly to the requested
-file; there is no multi-file transaction or manifest commit protocol.
+```python
+DatasetExample(**json.loads(line))
+```
 
-## Deliberately outside this MVP
+`AttributionDataset.to_jsonl()` serializes each example with `dataclasses.asdict()`
+and `json.dump()`. Object keys are sorted and UTF-8 is preserved, so the same
+ordered examples produce stable bytes.
 
-- integration registries, entry points, import-path loading, and discovery;
-- a production synthetic integration;
-- DailyTalk or any other concrete dataset integration;
-- source fingerprints, schema versions, hashes, and provenance records;
-- issue/rejection/result/manifest-metadata object hierarchies;
-- split orchestration, collation, tensor loading, and multi-dataset test runners;
-- multi-file manifests and transactional lifecycle management.
+There is no custom schema validator or format exception. Standard exceptions
+such as `JSONDecodeError`, `TypeError`, and `OSError` propagate unchanged. Python
+type annotations are not runtime validators.
 
-Experiment runners may later persist the resolved IDs, groups, partitions,
-hashes, configuration, and provenance required by `AGENTS.md`. Those concerns
-do not need to expand this dataset-specific dependency-injection boundary.
+## Integration boundary
 
-## Tests
+The framework does not define a registry or a custom integration protocol. A
+concrete integration can subclass `AttributionDataset` or construct one from its
+source. Adding an integration does not require changes to the generic dataset
+module.
 
-`tests/test_dataset.py` uses a test-local fake integration. The focused tests
-cover protocol-based injection, frozen examples, stable JSON round-trips,
-relative path strings, optional fields, malformed JSON, invalid JSON values,
-and duplicate-ID rejection.
+The first concrete implementation will live at
+`tts_data_attribution.integrations.dailytalk.dataset`.
+
+## Deliberately outside this interface
+
+- integration registries and plugin discovery;
+- dataset downloading;
+- model-specific waveform loading, resampling, tokenization, and collation;
+- split orchestration;
+- source fingerprints and schema migrations;
+- multi-dataset orchestration.
