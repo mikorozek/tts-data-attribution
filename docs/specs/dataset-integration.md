@@ -15,8 +15,8 @@ raw dataset → concrete integration → AttributionDataset → PyTorch DataLoad
 ```
 
 The generic dataset types live in `tts_data_attribution.dataset`. Concrete
-source parsing will be added under `tts_data_attribution.integrations` with the
-first implemented integration.
+dataset implementations are added to that package only with their first tested
+behavior.
 
 ## API
 
@@ -91,8 +91,18 @@ concrete integration can subclass `AttributionDataset` or construct one from its
 source. Adding an integration does not require changes to the generic dataset
 module.
 
-The first concrete implementation will create
-`tts_data_attribution.integrations.dailytalk.dataset`.
+`DailyTalkDataset` is the first concrete implementation. Its
+`from_directory()` constructor reads the official `metadata.json` and
+per-utterance transcript files, produces stable numeric dialogue/utterance
+ordering, stores relative audio paths and transcripts in `payload`, and exposes
+speaker and dialogue identities through `groups`.
+
+The official archive contains 23,773 utterances across 2,541 dialogues. Eight
+metadata transcripts differ from their per-utterance text files, so the
+integration uses the text files that accompany the audio. The source `turn`
+value is inconsistent for dialogue 1451 and is therefore not copied into the
+canonical metadata. Exact validation counts are recorded in
+`references/sources.yaml`.
 
 ## Deliberately outside this interface
 

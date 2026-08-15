@@ -4,13 +4,13 @@
 
 Build a reusable framework for running and validating data-attribution experiments. The framework must support repeated experiments with different PyTorch models, datasets, training procedures, parameter subsets, attribution settings, and evaluation responses.
 
-The framework core must not hard-code a particular model architecture, dataset schema, adaptation method, loss, query type, or experiment size. Concrete research studies belong in integrations and experiment directories.
+Reusable code must not hard-code a particular model architecture, dataset schema, adaptation method, loss, query type, or experiment size. Concrete behavior belongs in focused implementation modules, scripts, and consumed configurations.
 
 ## Core design principles
 
 - **Model-agnostic:** gradient collection must accept a user-supplied `torch.nn.Module` together with an explicit differentiable per-example objective.
 - **Parameter-agnostic:** users must be able to select the exact named parameters or modules whose gradients are collected. The selector may target adapters, full-model weights, or another subset without changing attribution code.
-- **Dataset-agnostic:** raw datasets are converted by adapters into a documented canonical experiment interface. Dataset-specific parsing, filtering, grouping, and collation never belong in framework-core code.
+- **Dataset-agnostic:** raw datasets are converted into a documented canonical interface. Dataset-specific parsing, filtering, grouping, and collation stay in focused dataset modules.
 - **Objective-agnostic:** the experiment provides the per-example training loss and held-out response. The framework must not assume cross-entropy, teacher forcing, classification logits, or waveform generation.
 - **Configuration-driven:** choices that vary between runs are expressed in validated configuration, resolved against the loaded objects, and saved with each run.
 - **Reproducible:** every artifact is tied to immutable example IDs, source revisions, configuration, random seeds, masks, and code/environment versions.
@@ -50,7 +50,7 @@ Gradient collection must support at least a reliable batch-size-one path and sho
 
 ### Training and counterfactual runs
 
-The experiment runner must support:
+The implemented training commands must support:
 
 - one or more target-model training runs;
 - independently initialized and trained subset/counterfactual runs;
@@ -65,7 +65,7 @@ Never warm-start a subset model from a model that has already seen examples excl
 
 TrackStar is the first attribution backend. Its implementation should consume generic per-example gradient features and selected optimizer statistics, rather than model-specific code. Projection, optimizer correction, covariance correction, normalization, checkpoint aggregation, and storage must be independently configurable and testable.
 
-Additional attribution backends should be addable behind the same experiment-facing interface.
+Additional attribution backends should be addable behind the same user-facing interface.
 
 ### Evaluation
 
@@ -92,7 +92,7 @@ At runtime, configuration must be resolved to concrete objects and saved. Depend
 - projection/correction settings;
 - software and hardware environment.
 
-A new experimental variant should normally require a new configuration or integration, not a modification to framework-core code.
+A new experimental variant should normally require a new consumed configuration or focused implementation module, not a modification to unrelated reusable code.
 
 ## Correctness requirements
 
@@ -105,17 +105,18 @@ A new experimental variant should normally require a new configuration or integr
 - Clearly distinguish data used in the controlled experiment from any unknown upstream pretraining data.
 - Do not present a budget-reduced validation protocol as a reproduction of a larger published checkpoint budget.
 
-## Separation between framework, integrations, and experiments
+## Separation of repository roles
 
 ```text
-src/tts_data_attribution/
-└── dataset/          implemented generic examples, PyTorch datasets, and persistence
-
-experiments/
-└── <experiment>/     experiment-owned configs, sources, scripts, and documentation
+src/tts_data_attribution/  importable implementation
+scripts/                   executable local and remote commands
+references/                provenance, papers, checksums, and licenses
+third_party/               pinned vendored upstream source
+tests/                     executable behavior checks
+data/ and artifacts/       ignored runtime files
 ```
 
-Add a reusable module only when its first concrete behavior is implemented and tested. Reusable framework modules must not import a concrete integration or experiment. Future integrations may depend on reusable framework modules. Experiments compose integrations and framework components through configuration.
+Add a module, script, or configuration only with its first concrete consumer. Importable implementation must not depend on command-line scripts. Scripts compose reusable implementation. Tracked configurations belong in `configs/` once an implemented command consumes them.
 
 ## Repository map
 
@@ -124,7 +125,6 @@ AGENTS.md                  framework-wide design and working rules
 README.md                  human-facing framework overview
 docs/specs/                reviewed framework interface specifications
 src/tts_data_attribution/  reusable framework and optional integrations
-experiments/               isolated concrete research studies
 references/                core papers, source manifests, and licenses
 data/                      ignored raw/processed data plus tracked generic manifests
 artifacts/                 ignored model snapshots, gradients, checkpoints, and runs
@@ -132,7 +132,7 @@ third_party/               pinned vendored upstream source and documented projec
 tests/                     unit, integration, and reproducibility tests
 ```
 
-Experiment-specific model links, dataset links, protocols, local asset paths, and known upstream issues belong in that experiment's documentation, not in `AGENTS.md`.
+Model links, dataset links, local asset paths, and immutable source details belong in `references/sources.yaml`. Focused protocols and known issues belong in the relevant implementation or documentation.
 
 ## Repository rules
 
@@ -144,7 +144,7 @@ Experiment-specific model links, dataset links, protocols, local asset paths, an
 - Never silently update pinned upstream code or artifacts.
 - Prefer integration wrappers, but direct changes to vendored upstream source are allowed when required. Keep them minimal, preserve licenses and upstream provenance, document every change in that vendor directory, and cover changed behavior with tests.
 - Every completed run must be reproducible from its resolved manifest and immutable inputs.
-- Add framework behavior only when it is generic; otherwise implement it as an integration or experiment component.
+- Add reusable behavior only when it is generic; otherwise keep it in a focused dataset, model, script, or configuration component.
 
 ## Core references
 
@@ -153,4 +153,4 @@ Experiment-specific model links, dataset links, protocols, local asset paths, an
 - TRAK / LDS paper: <https://arxiv.org/abs/2303.14186>; local PDF: `references/papers/trak-2303.14186v2.pdf`.
 - TRAK code: <https://github.com/MadryLab/trak>.
 
-Exact URLs, revisions, local paths, sizes, and checksums are recorded in `references/sources.yaml` and experiment-owned source manifests.
+Exact URLs, revisions, local paths, sizes, and checksums are recorded in `references/sources.yaml`.

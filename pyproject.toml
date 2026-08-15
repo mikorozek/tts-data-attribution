@@ -11,6 +11,9 @@ requires-python = ">=3.11"
 license = { text = "Research code license TBD" }
 dependencies = ["numpy>=1.26", "torch>=2.0"]
 
+[dependency-groups]
+data = ["gdown==6.1.0"]
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/tts_data_attribution"]
 

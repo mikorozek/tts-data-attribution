@@ -75,5 +75,5 @@ slurm-*.err
 # Temporary upstream clones
 /third_party/.tmp/
 
-# Paper PDFs, source/license manifests, experiment configs, source code, tests,
+# Paper PDFs, source/license manifests, consumed configs, source code, tests,
 # and small deterministic metadata manifests are intentionally NOT ignored.

@@ -1,33 +1,69 @@
 # TTS Data Attribution
 
-Reusable PyTorch framework for running data-attribution experiments and validating them with counterfactual retraining. TrackStar and LDS are the first attribution and evaluation backends.
+Reusable PyTorch framework for data-attribution experiments validated through
+counterfactual retraining. TrackStar and Linear Datamodeling Score are the first
+planned attribution and evaluation methods.
 
-The framework is designed to accept user-provided datasets, `torch.nn.Module` models, per-example objectives, parameter selectors, training recipes, subset masks, and scalar evaluation responses. Concrete research studies are isolated under `experiments/`. Reusable modules and integrations are added only with their first implemented behavior.
+The framework accepts user-provided datasets, `torch.nn.Module` models,
+per-example objectives, parameter selectors, training procedures, subset masks,
+and scalar evaluation responses. Reusable modules are added only with their
+first implemented and tested behavior.
 
-Read [`AGENTS.md`](AGENTS.md) for framework-wide design rules.
+Read [`AGENTS.md`](AGENTS.md) for project-wide design rules.
 
-## Current reference experiment
+## Current target
 
-The initial research study is isolated under [`experiments/qwen3_tts_dailytalk/`](experiments/qwen3_tts_dailytalk/). It must not introduce Qwen- or DailyTalk-specific assumptions into framework-core modules.
+The first end-to-end target combines Qwen3-TTS-12Hz-1.7B-Base with DailyTalk.
+Attribution will apply only to the controlled fine-tuning data, never to unknown
+Qwen pretraining data. Exact source revisions, asset sizes, checksums, licenses,
+and paper locations are recorded in [`references/sources.yaml`](references/sources.yaml).
 
-## Local assets
+The upstream Qwen fine-tuning loss is not treated as a trusted per-example
+objective. Label alignment and within-frame target access must be tested before
+any scaled run.
 
-Large assets are excluded from Git:
+## Repository roles
 
-- model snapshots: `artifacts/models/`;
-- raw/processed data and caches: `data/raw/`, `data/processed/`, `data/cache/`;
-- checkpoints, gradients, and run outputs: `artifacts/runs/`.
+- `src/tts_data_attribution/` contains importable implementation.
+- `scripts/` contains commands intended for local and remote execution.
+- `references/` contains immutable provenance, papers, checksums, and licenses.
+- `third_party/` contains pinned vendored upstream source.
+- `tests/` contains executable behavior checks.
+- `data/` and `artifacts/` contain ignored runtime files.
+- `configs/` will be created when the first implemented command consumes a configuration.
 
-Core papers are stored under `references/papers/`. Experiment-specific asset download and source information live inside each experiment directory.
+## DailyTalk download
 
-## Dataset integration
+The official DailyTalk distribution is a 5,341,371,062-byte Google Drive archive
+that expands to 6,908,762,531 bytes. Allow at least 15 GB of free disk space
+during extraction.
 
-`DatasetExample` represents one model-independent example. `AttributionDataset`
-stores examples, implements `torch.utils.data.Dataset`, and reads or writes
-JSONL without a custom validation layer or integration protocol.
+```bash
+uv run --group data python scripts/download_dailytalk.py
+```
+
+Use `--data-root` and `--archive` to place the extracted dataset and temporary
+archive on suitable remote storage. The archive is removed after successful
+extraction unless `--keep-archive` is provided.
+
+Create the framework JSONL index with:
+
+```bash
+uv run python scripts/index_dailytalk.py
+```
+
+`DailyTalkDataset` reads the per-utterance transcript files, preserves dialogue
+and speaker groups, and carries the source topic, emotion, and dialogue act as
+metadata. Both commands accept explicit paths for remote storage.
+
+## Dataset API
+
+`DatasetExample` represents one model-independent unit of attribution.
+`AttributionDataset` stores examples, implements `torch.utils.data.Dataset`, and
+reads or writes JSONL without a custom validation layer.
 
 ```python
-from tts_data_attribution.dataset import DatasetExample, AttributionDataset
+from tts_data_attribution.dataset import AttributionDataset, DatasetExample
 
 examples = AttributionDataset(
     [
@@ -38,11 +74,10 @@ examples = AttributionDataset(
         )
     ]
 )
-examples.to_jsonl("data/manifests/examples.jsonl")
+examples.to_jsonl("data/processed/examples.jsonl")
 ```
 
-Concrete integrations will be added under `tts_data_attribution.integrations`
-when they are implemented. The interface is specified in
-[`docs/specs/dataset-integration.md`](docs/specs/dataset-integration.md).
-DailyTalk integration, model loading, splits, gradients, and attribution remain
-to be implemented.
+The interface is specified in
+[`docs/specs/dataset-integration.md`](docs/specs/dataset-integration.md). Model
+loading, gradients, attribution, and evaluation will be added only when their
+behavior is implemented.
