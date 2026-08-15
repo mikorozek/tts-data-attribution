@@ -2,7 +2,7 @@
 
 Reusable PyTorch framework for running data-attribution experiments and validating them with counterfactual retraining. TrackStar and LDS are the first attribution and evaluation backends.
 
-The framework core is designed to accept user-provided datasets, `torch.nn.Module` models, per-example objectives, parameter selectors, training recipes, subset masks, and scalar evaluation responses. Concrete model/dataset studies are isolated under `experiments/` and `src/tts_data_attribution/integrations/`.
+The framework is designed to accept user-provided datasets, `torch.nn.Module` models, per-example objectives, parameter selectors, training recipes, subset masks, and scalar evaluation responses. Concrete research studies are isolated under `experiments/`. Reusable modules and integrations are added only with their first implemented behavior.
 
 Read [`AGENTS.md`](AGENTS.md) for framework-wide design rules.
 
@@ -41,8 +41,8 @@ examples = AttributionDataset(
 examples.to_jsonl("data/manifests/examples.jsonl")
 ```
 
-Concrete integrations live under `tts_data_attribution.integrations`. The
-interface is specified in
+Concrete integrations will be added under `tts_data_attribution.integrations`
+when they are implemented. The interface is specified in
 [`docs/specs/dataset-integration.md`](docs/specs/dataset-integration.md).
 DailyTalk integration, model loading, splits, gradients, and attribution remain
 to be implemented.

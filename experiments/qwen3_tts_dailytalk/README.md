@@ -36,8 +36,6 @@ Required pilot: encode/decode, reference-conditioned inference, loss-index tests
 experiment.yaml            preliminary full experiment composition
 lora.yaml                  preliminary Qwen-specific adapter selection
 sources.yaml               experiment-specific source pins
-scripts/download_assets.sh ignored local model/tokenizer download
-scripts/download_references.py pinned experiment-paper download
 ```
 
 These configurations are placeholders until the corresponding framework integrations and schemas are implemented. Revise them through validated configuration, not by introducing Qwen or DailyTalk assumptions into framework-core code.

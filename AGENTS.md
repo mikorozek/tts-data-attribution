@@ -109,20 +109,13 @@ A new experimental variant should normally require a new configuration or integr
 
 ```text
 src/tts_data_attribution/
-├── dataset/          generic examples, PyTorch datasets, and persistence
-├── models/           generic model factories and parameter selection
-├── objectives/       generic objective/response plumbing
-├── gradients/        per-example gradient collection and storage
-├── attribution/      TrackStar and future attribution backends
-├── evaluation/       LDS and future validation backends
-├── runners/          training and experiment orchestration
-└── integrations/     model- and dataset-specific adapters
+└── dataset/          implemented generic examples, PyTorch datasets, and persistence
 
 experiments/
 └── <experiment>/     experiment-owned configs, sources, scripts, and documentation
 ```
 
-Reusable framework modules must not import a concrete integration or experiment. Integrations may depend on reusable framework modules. Experiments compose integrations and framework components through configuration.
+Add a reusable module only when its first concrete behavior is implemented and tested. Reusable framework modules must not import a concrete integration or experiment. Future integrations may depend on reusable framework modules. Experiments compose integrations and framework components through configuration.
 
 ## Repository map
 
@@ -135,7 +128,6 @@ experiments/               isolated concrete research studies
 references/                core papers, source manifests, and licenses
 data/                      ignored raw/processed data plus tracked generic manifests
 artifacts/                 ignored model snapshots, gradients, checkpoints, and runs
-scripts/                   framework-wide utility scripts
 third_party/               pinned vendored upstream source and documented project patches
 tests/                     unit, integration, and reproducibility tests
 ```

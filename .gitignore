@@ -63,9 +63,7 @@ slurm-*.err
 
 # Framework artifacts. Keep only the documentation files below.
 /artifacts/models/*
-!/artifacts/models/README.md
 /artifacts/runs/*
-!/artifacts/runs/README.md
 /artifacts/cache/
 /artifacts/gradients/
 /artifacts/checkpoints/

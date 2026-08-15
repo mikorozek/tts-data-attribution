@@ -15,7 +15,8 @@ raw dataset → concrete integration → AttributionDataset → PyTorch DataLoad
 ```
 
 The generic dataset types live in `tts_data_attribution.dataset`. Concrete
-source parsing lives in `tts_data_attribution.integrations`.
+source parsing will be added under `tts_data_attribution.integrations` with the
+first implemented integration.
 
 ## API
 
@@ -90,7 +91,7 @@ concrete integration can subclass `AttributionDataset` or construct one from its
 source. Adding an integration does not require changes to the generic dataset
 module.
 
-The first concrete implementation will live at
+The first concrete implementation will create
 `tts_data_attribution.integrations.dailytalk.dataset`.
 
 ## Deliberately outside this interface
