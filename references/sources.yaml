@@ -1,0 +1,27 @@
+schema_version: 1
+retrieved_on: '2026-08-15'
+papers:
+  trackstar:
+    title: Scalable Influence and Fact Tracing for Large Language Model Pretraining
+    arxiv: 2410.17413v3
+    abstract_url: https://arxiv.org/abs/2410.17413v3
+    pdf:
+      url: https://arxiv.org/pdf/2410.17413v3
+      local: references/papers/trackstar-2410.17413v3.pdf
+      sha256: fccf4e0d9a3ec9475bc0e73c5e12de6c468615f8887e605e39455f4a12accb8c
+      bytes: 583434
+    code:
+      url: https://github.com/pair-code/pretraining-tda
+      commit: 7ed5d03137957ba3d11e7d4a6fde14820b3e43b5
+  trak:
+    title: 'TRAK: Attributing Model Behavior at Scale'
+    arxiv: 2303.14186v2
+    abstract_url: https://arxiv.org/abs/2303.14186v2
+    pdf:
+      url: https://arxiv.org/pdf/2303.14186v2
+      local: references/papers/trak-2303.14186v2.pdf
+      sha256: 407fc348aa2e2b22a2a5f279924d78413e04c0a8e7b61c891b013aa9cafc6993
+      bytes: 18269691
+    code:
+      url: https://github.com/MadryLab/trak
+      commit: 35f8446f05342f116b798fcd918a0718cac0d597

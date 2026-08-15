@@ -1,0 +1,67 @@
+schema_version: 1
+status: preliminary
+
+model:
+  repo_id: Qwen/Qwen3-TTS-12Hz-1.7B-Base
+  revision: fd4b254389122332181a7c3db7f27e918eec64e3
+  source_commit: 022e286b98fbec7e1e916cb940cdf532cd9f488e
+  tokenizer_repo_id: Qwen/Qwen3-TTS-Tokenizer-12Hz
+  tokenizer_revision: 7dd38ad4e9bad454aae9cd937d0cd577604fe229
+
+lora:
+  config: experiments/qwen3_tts_dailytalk/lora.yaml
+  resolved_targets_manifest: null  # Written into each run directory after model inspection.
+
+freeze:
+  base_weights: true
+  speech_tokenizer: true
+  reference_speaker_encoder: true
+  embeddings: true
+  norms: true
+  output_heads: true
+
+data:
+  dataset: DailyTalk
+  speaker: null  # Select after audio QC.
+  train_universe_size: 1024
+  query_size: 128
+  development_size: null
+  fixed_reference_clip: null
+  split_unit: dialogue_id
+
+submodels:
+  count: 50
+  subset_size: 512
+  complementary_mask_pairs: 25
+  appearances_per_example: 25
+  identical_lora_initialization: true
+  reset_optimizer_per_run: true
+
+objective:
+  type: explicit_teacher_forced_cross_entropy
+  main_codebook_weight: 1.0
+  residual_codebooks_weight: 0.3
+  reduction: null  # Decide and document token mean vs token sum.
+
+trackstar:
+  parameter_scope: lora_only
+  projection_dimension: null
+  projection_seed: null
+  block_layout: null
+  optimizer_second_moment_correction: true
+  projected_covariance_correction: true
+  normalize_features: true
+
+lds:
+  response: negative_teacher_forced_loss
+  correlation: spearman
+  aggregate_across_queries: [mean, median, distribution]
+  bootstrap_unit: complementary_mask_pair
+
+training:
+  precision: bf16
+  epochs: null
+  learning_rate: null
+  effective_batch_size: null
+  gradient_checkpointing: null
+  seed: null
