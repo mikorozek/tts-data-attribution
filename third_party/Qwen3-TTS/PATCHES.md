@@ -12,4 +12,4 @@ Upstream baseline: `022e286b98fbec7e1e916cb940cdf532cd9f488e` from https://githu
 
 ## Applied modifications
 
-None yet. `UPSTREAM.md` and this file are repository metadata, not changes to upstream runtime behavior.
+- `assets/Qwen3_TTS.pdf` is removed from Git tracking but kept on disk to slim the repository; its provenance is pinned in `references/sources.yaml`. This tracking change does not alter upstream runtime behavior.

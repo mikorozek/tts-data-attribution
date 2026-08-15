@@ -78,5 +78,6 @@ slurm-*.err
 # Temporary upstream clones
 /third_party/.tmp/
 
-# Paper PDFs, source/license manifests, consumed configs, source code, tests,
-# and small deterministic metadata manifests are intentionally NOT ignored.
+# Paper PDFs are local working copies; tracked provenance lives in references/sources.yaml.
+/references/papers/
+/third_party/Qwen3-TTS/assets/*.pdf

@@ -149,9 +149,9 @@ Model links, dataset links, local asset paths, and immutable source details belo
 
 ## Core references
 
-- TrackStar paper: <https://arxiv.org/abs/2410.17413>; local PDF: `references/papers/trackstar-2410.17413v3.pdf`.
+- TrackStar paper: <https://arxiv.org/abs/2410.17413>; untracked local working copy: `references/papers/trackstar-2410.17413v3.pdf`.
 - TrackStar code: <https://github.com/pair-code/pretraining-tda>.
-- TRAK / LDS paper: <https://arxiv.org/abs/2303.14186>; local PDF: `references/papers/trak-2303.14186v2.pdf`.
+- TRAK / LDS paper: <https://arxiv.org/abs/2303.14186>; untracked local working copy: `references/papers/trak-2303.14186v2.pdf`.
 - TRAK code: <https://github.com/MadryLab/trak>.
 
-Exact URLs, revisions, local paths, sizes, and checksums are recorded in `references/sources.yaml`.
+The URLs, checksums, and byte sizes in `references/sources.yaml` are the tracked provenance for these untracked local PDFs.
