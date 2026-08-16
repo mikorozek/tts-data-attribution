@@ -144,7 +144,7 @@ Model links, dataset links, local asset paths, and immutable source details belo
 - Put construction and serialization behavior on the domain type it belongs to; reserve module-level functions for behavior that has no natural owner.
 - Keep large data, weights, optimizer states, checkpoints, gradient features, generated media, and run logs out of Git.
 - Never silently update pinned upstream code or artifacts.
-- Prefer integration wrappers, but direct changes to vendored upstream source are allowed when required. Keep them minimal, preserve licenses and upstream provenance, document every change in that vendor directory, and cover changed behavior with tests.
+- Model behavior that the framework needs — training forward passes, per-example objectives, gradient collection, adapter injection, speaker conditioning, serialization — is added directly to the vendored upstream model classes in `third_party/`, not to wrapper classes in `src/`. Keep each edit minimal, preserve licenses and upstream provenance, record every change in that vendor directory's `PATCHES.md`, and cover changed behavior with tests. Never bump the pinned upstream without carrying the recorded changes over.
 - Every completed run must be reproducible from its resolved manifest and immutable inputs.
 - Add reusable behavior only when it is generic; otherwise keep it in a focused dataset, model, script, or configuration component.
 

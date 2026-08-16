@@ -4,8 +4,8 @@ Upstream baseline: `022e286b98fbec7e1e916cb940cdf532cd9f488e` from https://githu
 
 ## Policy
 
-- Prefer framework/integration wrappers when they can implement the required behavior cleanly.
-- Direct edits are allowed for training-forward, loss-alignment, gradient, or serialization behavior that cannot be safely provided by a wrapper.
+- Framework behavior for this model — training forward passes, per-example objectives, gradient collection, adapter injection, speaker conditioning, serialization — is added directly to the upstream classes here, so `src/` uses `qwen_tts` classes as they are.
+- Add only what the framework needs; do not restructure upstream code around it.
 - Keep modifications minimal and do not remove or alter upstream licensing notices.
 - For every direct edit, record the affected files, purpose, behavioral change, and validating tests below.
 - Never place model weights or generated artifacts in this directory.
