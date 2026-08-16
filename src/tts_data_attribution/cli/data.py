@@ -40,16 +40,12 @@ def run_encode(arguments: argparse.Namespace) -> None:
         arguments.tokenizer_path, arguments.device
     )
     encoder.encode(dataset, arguments.data_root, arguments.output, arguments.batch_size)
-    write_manifest(arguments.output, arguments.tokenizer_path, len(dataset))
-    print(f"encoded data ready at {arguments.output}")
-
-
-def write_manifest(output: Path, tokenizer_path: Path, utterance_count: int) -> None:
     manifest = {
-        "output_sha256": hashlib.sha256(output.read_bytes()).hexdigest(),
-        "tokenizer_path": tokenizer_path.as_posix(),
-        "utterance_count": utterance_count,
+        "output_sha256": hashlib.sha256(arguments.output.read_bytes()).hexdigest(),
+        "tokenizer_path": arguments.tokenizer_path.as_posix(),
+        "utterance_count": len(dataset),
     }
-    output.with_suffix(".manifest.json").write_text(
+    arguments.output.with_suffix(".manifest.json").write_text(
         json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
+    print(f"encoded data ready at {arguments.output}")
