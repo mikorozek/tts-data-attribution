@@ -57,8 +57,8 @@ The command validates the dataset layout and resumes after interruption by
 skipping already-encoded IDs.
 
 `DailyTalkDataset` reads the per-utterance transcript files and keeps the
-speaker and dialogue of every utterance; `Qwen3TTSEncoder` encodes any
-`UtteranceDataset` with the pinned 12Hz tokenizer.
+speaker and dialogue of every utterance; `Qwen3TTSUtteranceAudioEncoder`
+encodes any `UtteranceDataset` with the pinned 12Hz tokenizer.
 
 An experiment is one untracked directory under `experiments/`, defined by one
 command: an encoded dataset, a model, and the sampling. `init` validates all

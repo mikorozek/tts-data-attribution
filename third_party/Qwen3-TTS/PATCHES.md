@@ -4,7 +4,7 @@ Upstream baseline: `022e286b98fbec7e1e916cb940cdf532cd9f488e` from https://githu
 
 ## Policy
 
-- Framework behavior for this model — training forward passes, per-example objectives, gradient collection, adapter injection, speaker conditioning, serialization — is added directly to the upstream classes here, so `src/` uses `qwen_tts` classes as they are.
+- Framework behavior is composed around `qwen_tts` objects in `src/tts_data_attribution/models/qwen3_tts/` whenever a wrapper can reach what it needs; edit the upstream classes here only for training-forward, loss, or gradient behavior a wrapper cannot reach.
 - Add only what the framework needs; do not restructure upstream code around it.
 - Keep modifications minimal and do not remove or alter upstream licensing notices.
 - For every direct edit, record the affected files, purpose, behavioral change, and validating tests below.

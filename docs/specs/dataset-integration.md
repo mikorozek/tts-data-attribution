@@ -5,13 +5,13 @@ Status: **implemented; intentionally small**
 ## Scope
 
 Two independent axes compose at the command line: a dataset class loads a raw
-source layout into `Utterance` values, and an encoder class fills their
-`audio_codes` with one model's tokenizer. Any dataset works with any encoder,
+source layout into `Utterance` values, and an utterance-audio encoder fills
+their `audio_codes` with one model's tokenizer. Any dataset works with any encoder,
 so a new dataset or a new model is one new class each, never a pairing.
 
 ```text
 DailyTalkDataset(data_root)  ─┐
-                              ├─ Qwen3TTSEncoder.encode(dataset, audio_root, output, batch_size)
+                              ├─ Qwen3TTSUtteranceAudioEncoder.encode(dataset, audio_root, output, batch_size)
 UtteranceDataset (any)       ─┘                     ↓
                                      dailytalk_qwen3tts.jsonl  →  UtteranceDataset.from_jsonl()
 ```
@@ -44,8 +44,8 @@ class DailyTalkDataset(UtteranceDataset):
     def __init__(self, data_root: str | Path) -> None: ...   # keeps self.data_root
 
 
-class Qwen3TTSEncoder:                                       # models.qwen3_tts
-    def __init__(self, tokenizer: AudioCodesTokenizer) -> None: ...
+class Qwen3TTSUtteranceAudioEncoder(UtteranceAudioEncoder):    # models.qwen3_tts
+    def __init__(self, tokenizer: Qwen3TTSTokenizer) -> None: ...
 
     @classmethod
     def from_pretrained(cls, tokenizer_path: str | Path, device: str) -> Self: ...
@@ -74,7 +74,7 @@ the only place that serializes utterances:
 
 ## Encoding behavior
 
-`Qwen3TTSEncoder.encode()` reads the IDs already present in `output`, encodes
+`Qwen3TTSUtteranceAudioEncoder.encode()` reads the IDs already present in `output`, encodes
 only the missing utterances in `DataLoader` batches of `batch_size`, and appends
 one line per utterance after each batch through `to_jsonl(append=True)`. An
 interrupted run resumes by rerunning the same command. The tokenizer is
@@ -93,7 +93,9 @@ the text files win. Exact counts are recorded in `references/sources.yaml`.
 
 ## Deliberately outside this interface
 
-- integration registries and plugin discovery beyond the two CLI mappings;
+- integration registries and plugin discovery beyond the mappings exported by
+  `dataset` (`DATASETS`) and `models` (`UTTERANCE_AUDIO_ENCODERS`,
+  `SPEAKER_REFERENCE_AUDIO_ENCODERS`);
 - dataset downloading;
 - split orchestration and reference-voice selection (experiment plan);
 - model-specific collation and tensor construction (training).

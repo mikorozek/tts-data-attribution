@@ -2,20 +2,17 @@ from __future__ import annotations
 
 from dataclasses import replace
 from pathlib import Path
-from typing import Protocol, Self
+from typing import Self
 
 from qwen_tts import Qwen3TTSTokenizer
 from torch.utils.data import DataLoader
 
 from ...dataset import Utterance, UtteranceDataset
+from ..utterance_audio_encoder import UtteranceAudioEncoder
 
 
-class AudioCodesTokenizer(Protocol):
-    def encode(self, audios: list[str]) -> object: ...
-
-
-class Qwen3TTSEncoder:
-    def __init__(self, tokenizer: AudioCodesTokenizer) -> None:
+class Qwen3TTSUtteranceAudioEncoder(UtteranceAudioEncoder):
+    def __init__(self, tokenizer: Qwen3TTSTokenizer) -> None:
         self.tokenizer = tokenizer
 
     @classmethod

@@ -6,7 +6,7 @@ import pytest
 from conftest import FakeTokenizer
 
 from tts_data_attribution.dataset import Utterance, UtteranceDataset
-from tts_data_attribution.models.qwen3_tts import Qwen3TTSEncoder
+from tts_data_attribution.models.qwen3_tts import Qwen3TTSUtteranceAudioEncoder
 
 
 def utterance(identifier: str) -> Utterance:
@@ -26,7 +26,9 @@ def test_encode_writes_every_utterance_with_codes(
     dataset = UtteranceDataset([utterance("2-0"), utterance("2-1"), utterance("2-2")])
     output = tmp_path / "encoded.jsonl"
 
-    Qwen3TTSEncoder(tokenizer).encode(dataset, tmp_path / "raw", output, batch_size=2)
+    Qwen3TTSUtteranceAudioEncoder(tokenizer).encode(
+        dataset, tmp_path / "raw", output, batch_size=2
+    )
 
     encoded = UtteranceDataset.from_jsonl(output)
     assert [item.id for item in encoded] == ["2-0", "2-1", "2-2"]
@@ -47,7 +49,9 @@ def test_encode_resumes_by_skipping_encoded_ids(
     output = tmp_path / "encoded.jsonl"
     UtteranceDataset([dataset[0]]).to_jsonl(output)
 
-    Qwen3TTSEncoder(tokenizer).encode(dataset, tmp_path, output, batch_size=4)
+    Qwen3TTSUtteranceAudioEncoder(tokenizer).encode(
+        dataset, tmp_path, output, batch_size=4
+    )
 
     assert [item.id for item in UtteranceDataset.from_jsonl(output)] == ["2-0", "2-1"]
     assert tokenizer.received == [[str(tmp_path / "data/2-1.wav")]]
@@ -63,7 +67,9 @@ def test_encode_does_nothing_when_everything_is_encoded(
     dataset.to_jsonl(output)
     before = output.read_bytes()
 
-    Qwen3TTSEncoder(tokenizer).encode(dataset, tmp_path, output, batch_size=4)
+    Qwen3TTSUtteranceAudioEncoder(tokenizer).encode(
+        dataset, tmp_path, output, batch_size=4
+    )
 
     assert output.read_bytes() == before
     assert tokenizer.received == []

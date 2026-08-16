@@ -4,15 +4,12 @@ import argparse
 import json
 from pathlib import Path
 
-import librosa
 import torch
-from qwen_tts import Qwen3TTSModel
 
 from ..dataset import UtteranceDataset
 from ..experiment import ExperimentManifest, Plan
+from ..models import SPEAKER_REFERENCE_AUDIO_ENCODERS
 from .errors import CommandError
-
-MODELS = ["qwen3-tts"]
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:
@@ -24,7 +21,9 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     init_parser.add_argument("name")
     init_parser.add_argument("--dataset", type=Path, required=True)
     init_parser.add_argument("--audio-root", type=Path, required=True)
-    init_parser.add_argument("--model", choices=MODELS, required=True)
+    init_parser.add_argument(
+        "--model", choices=sorted(SPEAKER_REFERENCE_AUDIO_ENCODERS), required=True
+    )
     init_parser.add_argument("--model-path", type=Path, required=True)
     init_parser.add_argument("--training-pool-size", type=int, required=True)
     init_parser.add_argument("--subset-count", type=int, required=True)
@@ -71,8 +70,8 @@ def run_init(arguments: argparse.Namespace) -> None:
     if not manifest.model_path.is_dir():
         raise CommandError(f"model directory not found at {manifest.model_path}")
     try:
-        model = Qwen3TTSModel.from_pretrained(
-            str(manifest.model_path), device_map=arguments.device
+        encoder = SPEAKER_REFERENCE_AUDIO_ENCODERS[manifest.model].from_pretrained(
+            manifest.model_path, arguments.device
         )
     except (OSError, TypeError, ValueError) as error:
         raise CommandError(
@@ -80,14 +79,12 @@ def run_init(arguments: argparse.Namespace) -> None:
         ) from error
 
     utterances = {utterance.id: utterance for utterance in dataset}
-    sample_rate = model.model.speaker_encoder_sample_rate
-    speaker_embeddings: dict[str, torch.Tensor] = {}
-    for speaker, reference_id in plan.references.items():
-        wav_path = manifest.audio_root / utterances[reference_id].audio_path
-        wav, _ = librosa.load(str(wav_path), sr=sample_rate, mono=True)
-        speaker_embeddings[speaker] = model.model.extract_speaker_embedding(
-            wav, sample_rate
-        ).cpu()
+    speaker_embeddings = {
+        speaker: encoder.encode(
+            manifest.audio_root / utterances[reference_id].audio_path
+        )
+        for speaker, reference_id in plan.references.items()
+    }
 
     directory.mkdir(parents=True)
     manifest.to_yaml(directory / "manifest.yaml")

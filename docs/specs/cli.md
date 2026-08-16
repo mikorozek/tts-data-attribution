@@ -114,8 +114,8 @@ the first `speaker_count` speaker IDs in sorted order. Sampling is by utterance;
 byte-identical plan.
 
 `speaker_embeddings.pt` holds one speaker-encoder vector per reference
-utterance, keyed by speaker, computed by the loaded model from the reference
-wav resampled to the speaker encoder's sample rate. Training conditions every
+utterance, keyed by speaker, computed by the model's
+`SpeakerReferenceAudioEncoder` from the reference wav. Training conditions every
 utterance of a speaker on this fixed vector; the reference wavs are never read
 again.
 
@@ -139,6 +139,7 @@ sampling value on the command line again.
   argparse convention.
 - Paths resolve relative to the repository root and come from defaults or the
   experiment config, never from hard-coded logic downstream.
-- A new dataset adds one class and one name in `DATASETS`; a new model adds
-  one encoder class and one name in `ENCODERS`. Experiment commands stay
-  unchanged.
+- A new dataset adds one class and one entry in `dataset.DATASETS`; a new
+  model adds one class per abstract encoder base and one entry in each
+  mapping exported by `models` (`UTTERANCE_AUDIO_ENCODERS`,
+  `SPEAKER_REFERENCE_AUDIO_ENCODERS`). Commands stay unchanged.

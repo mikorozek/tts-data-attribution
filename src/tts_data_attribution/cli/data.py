@@ -5,12 +5,9 @@ import hashlib
 import json
 from pathlib import Path
 
-from ..dataset import DailyTalkDataset
-from ..models.qwen3_tts import Qwen3TTSEncoder
+from ..dataset import DATASETS
+from ..models import UTTERANCE_AUDIO_ENCODERS
 from .errors import CommandError
-
-DATASETS = {"dailytalk": DailyTalkDataset}
-ENCODERS = {"qwen3-tts": Qwen3TTSEncoder}
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:
@@ -20,7 +17,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         "encode", help="encode every utterance of a dataset with a model tokenizer"
     )
     encode_parser.add_argument("dataset", choices=sorted(DATASETS))
-    encode_parser.add_argument("model", choices=sorted(ENCODERS))
+    encode_parser.add_argument("model", choices=sorted(UTTERANCE_AUDIO_ENCODERS))
     encode_parser.add_argument("--data-root", type=Path, required=True)
     encode_parser.add_argument("--output", type=Path, required=True)
     encode_parser.add_argument("--tokenizer-path", type=Path, required=True)
@@ -39,7 +36,7 @@ def run_encode(arguments: argparse.Namespace) -> None:
     if not arguments.tokenizer_path.exists():
         raise CommandError(f"tokenizer not found at {arguments.tokenizer_path}")
     dataset = DATASETS[arguments.dataset](arguments.data_root)
-    encoder = ENCODERS[arguments.model].from_pretrained(
+    encoder = UTTERANCE_AUDIO_ENCODERS[arguments.model].from_pretrained(
         arguments.tokenizer_path, arguments.device
     )
     encoder.encode(dataset, arguments.data_root, arguments.output, arguments.batch_size)
