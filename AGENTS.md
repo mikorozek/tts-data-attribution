@@ -138,7 +138,7 @@ Model links, dataset links, local asset paths, and immutable source details belo
 ## Repository rules
 
 - Keep source, configuration keys, tests, and technical documentation in English.
-- Formatting and linting are defined once in `pyproject.toml` (`[tool.black]`, `[tool.ruff]`) and obeyed by every editor and agent. Before any commit, run `uvx ruff format --check src tests` and `uvx ruff check src tests`; treat every finding as an error and fix it, never silence it. `uvx ruff format src tests` and `black src tests` must produce identical files.
+- Formatting and linting are defined once in `pyproject.toml` under `[tool.ruff]` and obeyed by every editor and agent. Before any commit, run `uvx ruff format --check src tests` and `uvx ruff check src tests`; treat every finding as an error and fix it, never silence it.
 - Do not add comments or docstrings to project-owned code or tests.
 - Make code self-documenting through precise names, explicit types, and small focused units.
 - Put construction and serialization behavior on the domain type it belongs to; reserve module-level functions for behavior that has no natural owner.
