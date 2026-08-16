@@ -1,3 +1,4 @@
-from .config import ExperimentConfig
+from .manifest import ExperimentManifest
+from .plan import Plan
 
-__all__ = ["ExperimentConfig"]
+__all__ = ["ExperimentManifest", "Plan"]

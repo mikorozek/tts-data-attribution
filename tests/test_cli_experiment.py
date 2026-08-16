@@ -6,7 +6,7 @@ import pytest
 
 from tts_data_attribution.cli.main import main
 from tts_data_attribution.dataset import Utterance, UtteranceDataset
-from tts_data_attribution.experiment import ExperimentConfig
+from tts_data_attribution.experiment import ExperimentManifest, Plan
 
 
 class FakeUpstreamModel:
@@ -22,16 +22,16 @@ class FakeUpstreamModel:
 def workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     dataset = tmp_path / "encoded.jsonl"
     UtteranceDataset(
-        [
-            Utterance(
-                id="2-0",
-                text="First",
-                speaker="0",
-                dialogue="2",
-                audio_path="data/2/0_0_d2.wav",
-                audio_codes=[[7] * 16],
-            )
-        ]
+        Utterance(
+            id=f"{speaker}-{index}",
+            text="hi",
+            speaker=speaker,
+            dialogue=str(index),
+            audio_path=f"data/{speaker}-{index}.wav",
+            audio_codes=[[7] * 16],
+        )
+        for speaker in ("0", "1")
+        for index in range(6)
     ).to_jsonl(dataset)
     (tmp_path / "model").mkdir()
     monkeypatch.setattr("importlib.util.find_spec", lambda name: object())
@@ -55,6 +55,16 @@ def init_arguments(root: Path, name: str = "study") -> list[str]:
         "qwen3-tts",
         "--model-path",
         str(root / "model"),
+        "--training-pool-size",
+        "8",
+        "--subset-count",
+        "3",
+        "--subset-size",
+        "4",
+        "--speaker-count",
+        "2",
+        "--seed",
+        "7",
         "--device",
         "cpu",
         "--root",
@@ -62,16 +72,36 @@ def init_arguments(root: Path, name: str = "study") -> list[str]:
     ]
 
 
-def test_init_creates_the_workspace_with_its_config(workspace: Path) -> None:
+def test_init_writes_the_manifest_and_the_plan(workspace: Path) -> None:
     assert main(init_arguments(workspace)) == 0
 
-    config = ExperimentConfig.from_yaml(workspace / "experiments/study/config.yaml")
-    assert config == ExperimentConfig(
+    directory = workspace / "experiments/study"
+    manifest = ExperimentManifest.from_yaml(directory / "manifest.yaml")
+    assert manifest == ExperimentManifest(
         dataset=workspace / "encoded.jsonl",
         model="qwen3-tts",
         model_path=workspace / "model",
+        training_pool_size=8,
+        subset_count=3,
+        subset_size=4,
+        speaker_count=2,
+        seed=7,
     )
+    plan = Plan.from_json(directory / "plan.json")
+    assert plan == Plan.sample(manifest, UtteranceDataset.from_jsonl(manifest.dataset))
     assert FakeUpstreamModel.loaded == [(str(workspace / "model"), "cpu")]
+
+
+def test_init_fails_cleanly_when_the_sampling_does_not_fit(
+    workspace: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    arguments = init_arguments(workspace)
+    arguments[arguments.index("--training-pool-size") + 1] = "11"
+
+    assert main(arguments) == 1
+    assert "training_pool_size 11 exceeds" in capsys.readouterr().err
+    assert FakeUpstreamModel.loaded == []
+    assert not (workspace / "experiments/study").exists()
 
 
 def test_init_refuses_an_existing_experiment(

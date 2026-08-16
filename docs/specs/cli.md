@@ -1,6 +1,6 @@
 # CLI
 
-Status: **`tda data encode` and `tda experiment init` implemented; other experiment commands specified, not yet implemented**
+Status: **`tda data encode` and `tda experiment init` implemented; `materialize`, `train`, and `status` specified, not yet implemented**
 
 ## Scope
 
@@ -21,8 +21,8 @@ tda
 │                                    [--device] [--batch-size]
 └── experiment
     ├── init        <name>   --dataset <encoded.jsonl> --model <model> --model-path <dir>
-    │                        [--device] [--root]
-    ├── plan        <name>                                            (planned)
+    │                        --training-pool-size N --subset-count N --subset-size N
+    │                        --speaker-count N --seed N [--device] [--root]
     ├── materialize <name>   [--device]                               (planned)
     ├── train       <name>   (--target | --subset <number>)           (planned)
     └── status      <name>                                            (planned)
@@ -66,36 +66,58 @@ uv run --group qwen tda data encode dailytalk qwen3-tts \
 
 ## tda experiment init
 
-One experiment is one directory `experiments/<name>/`, never tracked by git.
-`init` pins what the experiment is — one encoded dataset and one model — and
-validates both before it creates anything:
+One experiment is one directory `experiments/<name>/`, never tracked by git,
+and one command defines it completely. `init` takes the identity of the
+experiment (one encoded dataset, one model) and its sampling, validates
+everything, and writes two files. A different sampling is a different
+experiment.
+
+Validation, in order, before anything is created:
 
 - the encoded dataset must load through `UtteranceDataset.from_jsonl`;
+- the sampling must fit the dataset: `speaker_count` ≤ speakers present,
+  `training_pool_size` ≤ candidate utterances, `subset_size` ≤
+  `training_pool_size`;
 - the model must load through the upstream `Qwen3TTSModel.from_pretrained`
   (needs the `qwen` group and a device);
 - the experiment directory must not exist yet.
 
-It then writes `config.yaml` with exactly three keys:
+`manifest.yaml` records what was asked for:
 
 ```yaml
 dataset: data/processed/dailytalk_qwen3tts.jsonl
 model: qwen3-tts
 model_path: artifacts/models/Qwen3-TTS-12Hz-1.7B-Base-fd4b254
+seed: 1234
+speaker_count: 2
+subset_count: 50
+subset_size: 1000
+training_pool_size: 2000
 ```
 
-Every later command reads this file and never takes a data or model path
-again. Values that vary between iterations of the same experiment (sampling
-sizes, seeds, training settings) belong to the later stages, not to `init`.
+`plan.json` records what the sampling produced, deterministically from `seed`:
+
+```json
+{
+  "references": {"0": "870-6", "1": "1201-3"},
+  "training_pool": ["0-0", "0-3", "..."],
+  "subsets": [["0-0", "..."], ["..."]]
+}
+```
+
+`references` holds one reference utterance per speaker; those utterances are
+excluded from the pool. `training_pool` is drawn from the remaining utterances
+of the chosen speakers, and every subset is drawn from the pool. Speakers are
+the first `speaker_count` speaker IDs in sorted order. Sampling is by utterance;
+`dialogue` is not a constraint. The same manifest always yields a
+byte-identical plan.
+
+Every later command reads these two files and never takes a data, model, or
+sampling value on the command line again.
 
 ## Experiment commands (planned)
 
-- `plan` makes every decision and no computation: it samples the training
-  pool and subset ID lists by utterance, plus one reference utterance per
-  speaker (excluded from the pool), all from `sampling_seed`, and writes
-  `plan.json`. Dialogue is an analysis label, not a sampling constraint. The
-  same config always regenerates an identical plan; a changed config refuses
-  to overwrite an existing plan without `--force`.
-- `materialize` makes every computation and no decision: it selects the encoded
+- `materialize` selects the encoded
   records for the plan IDs, computes one speaker embedding per reference with
   the model's speaker encoder, and writes `train_data.json` with a `speakers`
   mapping and a `data` list.

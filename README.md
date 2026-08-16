@@ -60,14 +60,18 @@ skipping already-encoded IDs.
 speaker and dialogue of every utterance; `Qwen3TTSEncoder` encodes any
 `UtteranceDataset` with the pinned 12Hz tokenizer.
 
-An experiment is one untracked directory under `experiments/`. Create it from
-an encoded dataset and a model; both are validated by loading them:
+An experiment is one untracked directory under `experiments/`, defined by one
+command: an encoded dataset, a model, and the sampling. `init` validates all
+of it, then writes `manifest.yaml` (what was asked) and `plan.json` (the
+sampled reference utterances, training pool, and subsets):
 
 ```bash
 uv run --group qwen tda experiment init voice-study-1 \
   --dataset data/processed/dailytalk_qwen3tts.jsonl \
   --model qwen3-tts \
-  --model-path artifacts/models/Qwen3-TTS-12Hz-1.7B-Base-fd4b254
+  --model-path artifacts/models/Qwen3-TTS-12Hz-1.7B-Base-fd4b254 \
+  --training-pool-size 2000 --subset-count 50 --subset-size 1000 \
+  --speaker-count 2 --seed 1234
 ``` The full command surface, including
 the planned experiment commands, is specified in
 [`docs/specs/cli.md`](docs/specs/cli.md).
