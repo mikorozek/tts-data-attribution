@@ -1,4 +1,4 @@
-from .dailytalk_qwen3tts import DailyTalkQwen3TTSDataset
+from .dailytalk import DailyTalkDataset
 from .utterance import Utterance, UtteranceDataset
 
-__all__ = ["DailyTalkQwen3TTSDataset", "Utterance", "UtteranceDataset"]
+__all__ = ["DailyTalkDataset", "Utterance", "UtteranceDataset"]

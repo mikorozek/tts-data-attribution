@@ -6,26 +6,25 @@ import importlib.util
 import json
 from pathlib import Path
 
-from ..dataset import DailyTalkQwen3TTSDataset
+from ..dataset import DailyTalkDataset
+from ..models.qwen3_tts import Qwen3TTSEncoder
 from .errors import CommandError
+
+DATASETS = {"dailytalk": DailyTalkDataset}
+ENCODERS = {"qwen3-tts": Qwen3TTSEncoder}
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:
     data_parser = subparsers.add_parser("data", help="dataset preparation")
     data_subparsers = data_parser.add_subparsers(required=True)
     encode_parser = data_subparsers.add_parser(
-        "encode", help="encode every utterance into audio codes"
+        "encode", help="encode every utterance of a dataset with a model tokenizer"
     )
-    encode_parser.add_argument("dataset", choices=["dailytalk"])
-    encode_parser.add_argument("--data-root", type=Path, default=Path("data/raw/dailytalk"))
-    encode_parser.add_argument(
-        "--output", type=Path, default=Path("data/processed/dailytalk_qwen3tts.jsonl")
-    )
-    encode_parser.add_argument(
-        "--tokenizer-path",
-        type=Path,
-        default=Path("artifacts/models/Qwen3-TTS-Tokenizer-12Hz-7dd38ad"),
-    )
+    encode_parser.add_argument("dataset", choices=sorted(DATASETS))
+    encode_parser.add_argument("model", choices=sorted(ENCODERS))
+    encode_parser.add_argument("--data-root", type=Path, required=True)
+    encode_parser.add_argument("--output", type=Path, required=True)
+    encode_parser.add_argument("--tokenizer-path", type=Path, required=True)
     encode_parser.add_argument("--device", default="cuda:0")
     encode_parser.add_argument("--batch-size", type=int, default=16)
     encode_parser.set_defaults(run=run_encode)
@@ -40,17 +39,13 @@ def run_encode(arguments: argparse.Namespace) -> None:
     if importlib.util.find_spec("qwen_tts") is None:
         raise CommandError(
             "encoding needs the vendored qwen-tts package; "
-            "run: uv run --group qwen tda data encode dailytalk"
+            "run: uv run --group qwen tda data encode dailytalk qwen3-tts ..."
         )
     if not arguments.tokenizer_path.exists():
         raise CommandError(f"tokenizer not found at {arguments.tokenizer_path}")
-    dataset = DailyTalkQwen3TTSDataset(arguments.data_root)
-    dataset.encode(
-        tokenizer_path=arguments.tokenizer_path,
-        output=arguments.output,
-        device=arguments.device,
-        batch_size=arguments.batch_size,
-    )
+    dataset = DATASETS[arguments.dataset](arguments.data_root)
+    encoder = ENCODERS[arguments.model].from_pretrained(arguments.tokenizer_path, arguments.device)
+    encoder.encode(dataset, arguments.data_root, arguments.output, arguments.batch_size)
     write_manifest(arguments.output, arguments.tokenizer_path, len(dataset))
     print(f"encoded data ready at {arguments.output}")
 

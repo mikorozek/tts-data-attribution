@@ -4,20 +4,17 @@ Status: **implemented; intentionally small**
 
 ## Scope
 
-`UtteranceDataset` is the data ready for an experiment: a tuple of `Utterance`
-values behind the PyTorch dataset interface, read from and written to JSONL.
-A dataset×model class such as `DailyTalkQwen3TTSDataset` extends it with two
-duties: `load()` turns the raw source layout into utterances, and `encode()`
-fills their `audio_codes` with that model's tokenizer and appends the result to
-the encoded JSONL.
+Two independent axes compose at the command line: a dataset class loads a raw
+source layout into `Utterance` values, and an encoder class fills their
+`audio_codes` with one model's tokenizer. Any dataset works with any encoder,
+so a new dataset or a new model is one new class each, never a pairing.
 
 ```text
-raw layout → DailyTalkQwen3TTSDataset(data_root) → .encode(...) → dailytalk_qwen3tts.jsonl
-                                                                          ↓
-                                                     UtteranceDataset.from_jsonl()  (experiments)
+DailyTalkDataset(data_root)  ─┐
+                              ├─ Qwen3TTSEncoder.encode(dataset, audio_root, output, batch_size)
+UtteranceDataset (any)       ─┘                     ↓
+                                     dailytalk_qwen3tts.jsonl  →  UtteranceDataset.from_jsonl()
 ```
-
-A new dataset or model pairing is a new subclass; nothing existing changes.
 
 ## API
 
@@ -31,8 +28,6 @@ class Utterance:
     audio_path: str
     audio_codes: list[list[int]] | None = None
 
-    def to_json(self) -> str: ...
-
 
 class UtteranceDataset(torch.utils.data.Dataset[Utterance]):
     def __init__(self, utterances: Iterable[Utterance]) -> None: ...
@@ -40,17 +35,24 @@ class UtteranceDataset(torch.utils.data.Dataset[Utterance]):
     @classmethod
     def from_jsonl(cls, path: str | Path) -> Self: ...
 
-    def to_jsonl(self, path: str | Path) -> None: ...
+    def to_jsonl(self, path: str | Path, append: bool = False) -> None: ...
 
     def ids(self) -> set[str]: ...
 
 
-class DailyTalkQwen3TTSDataset(UtteranceDataset):
-    def __init__(self, data_root: str | Path) -> None: ...
+class DailyTalkDataset(UtteranceDataset):
+    def __init__(self, data_root: str | Path) -> None: ...   # keeps self.data_root
 
-    def load(self) -> list[Utterance]: ...
 
-    def encode(self, tokenizer_path: Path, output: Path, device: str, batch_size: int) -> None: ...
+class Qwen3TTSEncoder:                                       # models.qwen3_tts
+    def __init__(self, tokenizer: AudioCodesTokenizer) -> None: ...
+
+    @classmethod
+    def from_pretrained(cls, tokenizer_path: str | Path, device: str) -> Self: ...
+
+    def encode(
+        self, dataset: UtteranceDataset, audio_root: Path, output: Path, batch_size: int
+    ) -> None: ...
 ```
 
 ## Utterance contract
@@ -63,7 +65,8 @@ class DailyTalkQwen3TTSDataset(UtteranceDataset):
 - `audio_codes` is `None` after loading and one list of 16 integers per
   12.5 Hz frame after encoding.
 
-One JSONL line per utterance, keys sorted, UTF-8 preserved:
+`to_jsonl` writes one line per utterance, keys sorted, UTF-8 preserved; it is
+the only place that serializes utterances:
 
 ```json
 {"audio_codes":[[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15]],"audio_path":"data/2/0_0_d2.wav","dialogue":"2","id":"2-0","speaker":"0","text":"Hello"}
@@ -71,26 +74,26 @@ One JSONL line per utterance, keys sorted, UTF-8 preserved:
 
 ## Encoding behavior
 
-`encode()` reads the IDs already present in `output`, encodes only the missing
-utterances in `DataLoader` batches of `batch_size`, and appends one line per
-utterance after each batch. An interrupted run resumes by rerunning the same
-command. The tokenizer is loaded lazily inside `encode()`, so constructing the
-dataset stays cheap. `CodesEncoder` in `models.qwen3_tts` wraps the pinned 12Hz
-tokenizer and returns one `(frames, 16)` tensor per audio path.
+`Qwen3TTSEncoder.encode()` reads the IDs already present in `output`, encodes
+only the missing utterances in `DataLoader` batches of `batch_size`, and appends
+one line per utterance after each batch through `to_jsonl(append=True)`. An
+interrupted run resumes by rerunning the same command. The tokenizer is
+constructed by `from_pretrained`, the only place that imports `qwen_tts`; tests
+inject a fake tokenizer through the constructor.
 
 There is no schema validator. `JSONDecodeError`, `TypeError`, and `OSError`
 propagate unchanged.
 
 ## DailyTalk
 
-`load()` reads the official `metadata.json`, orders dialogues and utterances
-numerically, and takes each transcript from the per-utterance text file next to
-the audio. Eight metadata transcripts differ from those files, so the text files
-win. Exact counts are recorded in `references/sources.yaml`.
+`DailyTalkDataset` reads the official `metadata.json`, orders dialogues and
+utterances numerically, and takes each transcript from the per-utterance text
+file next to the audio. Eight metadata transcripts differ from those files, so
+the text files win. Exact counts are recorded in `references/sources.yaml`.
 
 ## Deliberately outside this interface
 
-- integration registries and plugin discovery;
+- integration registries and plugin discovery beyond the two CLI mappings;
 - dataset downloading;
 - split orchestration and reference-voice selection (experiment plan);
 - model-specific collation and tensor construction (training).

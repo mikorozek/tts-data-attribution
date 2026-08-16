@@ -17,8 +17,8 @@ that already exists.
 ```text
 tda
 ├── data
-│   └── encode   <dataset>   [--data-root] [--output] [--tokenizer-path]
-│                            [--device] [--batch-size]
+│   └── encode   <dataset> <model>   [--data-root] [--output] [--tokenizer-path]
+│                                    [--device] [--batch-size]
 └── experiment                                                    (planned)
     ├── init        <name>   --dataset <dataset>
     ├── plan        <name>
@@ -29,14 +29,13 @@ tda
 
 ## tda data encode
 
-One command prepares a dataset end to end: it parses the source layout,
-validates it, and encodes every utterance with the pinned 12Hz tokenizer.
+One command prepares a dataset end to end: it loads the named dataset,
+validates its layout, and encodes every utterance with the named model's
+tokenizer. Datasets and models are independent choices; any pair works.
 
-The output is one JSONL file:
-
-```text
-data/processed/dailytalk_qwen3tts.jsonl
-```
+`--data-root`, `--tokenizer-path`, and `--output` are required: they name a
+dataset and a model, so the generic command has no default for them. The
+output is one JSONL file.
 
 Each line is one utterance with this shape:
 
@@ -58,7 +57,10 @@ Behavior:
 Encoding needs the vendored `qwen-tts` package and a GPU:
 
 ```bash
-uv run --group qwen tda data encode dailytalk
+uv run --group qwen tda data encode dailytalk qwen3-tts \
+  --data-root data/raw/dailytalk \
+  --tokenizer-path artifacts/models/Qwen3-TTS-Tokenizer-12Hz-7dd38ad \
+  --output data/processed/dailytalk_qwen3tts.jsonl
 ```
 
 ## Experiment commands (planned)
@@ -94,5 +96,6 @@ One experiment is one directory `experiments/<name>/`, never tracked by git.
   argparse convention.
 - Paths resolve relative to the repository root and come from defaults or the
   experiment config, never from hard-coded logic downstream.
-- A new dataset integration adds one module and one name accepted by
-  `tda data encode`; experiment commands stay unchanged.
+- A new dataset adds one class and one name in `DATASETS`; a new model adds
+  one encoder class and one name in `ENCODERS`. Experiment commands stay
+  unchanged.

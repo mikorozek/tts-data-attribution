@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 import torch
 
-from tts_data_attribution.models.qwen3_tts import CodesEncoder
+from tts_data_attribution.models.qwen3_tts import Qwen3TTSEncoder
 
 
 def write_dailytalk_fixture(root: Path) -> None:
@@ -66,7 +66,7 @@ class FakeTokenizer:
 def fake_tokenizer(monkeypatch: pytest.MonkeyPatch) -> FakeTokenizer:
     tokenizer = FakeTokenizer()
     monkeypatch.setattr(
-        CodesEncoder,
+        Qwen3TTSEncoder,
         "from_pretrained",
         classmethod(lambda cls, tokenizer_path, device: cls(tokenizer)),
     )

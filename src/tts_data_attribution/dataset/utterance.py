@@ -18,9 +18,6 @@ class Utterance:
     audio_path: str
     audio_codes: list[list[int]] | None = None
 
-    def to_json(self) -> str:
-        return json.dumps(asdict(self), ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-
 
 class UtteranceDataset(Dataset[Utterance]):
     def __init__(self, utterances: Iterable[Utterance]) -> None:
@@ -31,9 +28,19 @@ class UtteranceDataset(Dataset[Utterance]):
         with Path(path).open(encoding="utf-8") as stream:
             return cls(Utterance(**json.loads(line)) for line in stream if line.strip())
 
-    def to_jsonl(self, path: str | Path) -> None:
-        with Path(path).open("w", encoding="utf-8", newline="\n") as stream:
-            stream.writelines(utterance.to_json() + "\n" for utterance in self.utterances)
+    def to_jsonl(self, path: str | Path, append: bool = False) -> None:
+        with Path(path).open(
+            "a" if append else "w", encoding="utf-8", newline="\n"
+        ) as stream:
+            for utterance in self.utterances:
+                json.dump(
+                    asdict(utterance),
+                    stream,
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                )
+                stream.write("\n")
 
     def ids(self) -> set[str]:
         return {utterance.id for utterance in self.utterances}

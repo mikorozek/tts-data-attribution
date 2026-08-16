@@ -9,7 +9,9 @@ from .errors import CommandError
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="tda", description="Data-attribution experiment commands")
+    parser = argparse.ArgumentParser(
+        prog="tda", description="Data-attribution experiment commands"
+    )
     subparsers = parser.add_subparsers(required=True)
     data.register(subparsers)
     return parser
