@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import argparse
-import importlib.util
 import json
 from pathlib import Path
 
+import librosa
 import torch
+from qwen_tts import Qwen3TTSModel
 
 from ..dataset import UtteranceDataset
 from ..experiment import ExperimentManifest, Plan
@@ -67,16 +68,8 @@ def run_init(arguments: argparse.Namespace) -> None:
     except ValueError as error:
         raise CommandError(str(error)) from error
 
-    if importlib.util.find_spec("qwen_tts") is None:
-        raise CommandError(
-            "loading the model needs the vendored qwen-tts package; "
-            "run: uv run --group qwen tda experiment init ..."
-        )
     if not manifest.model_path.is_dir():
         raise CommandError(f"model directory not found at {manifest.model_path}")
-    import librosa
-    from qwen_tts import Qwen3TTSModel
-
     try:
         model = Qwen3TTSModel.from_pretrained(
             str(manifest.model_path), device_map=arguments.device

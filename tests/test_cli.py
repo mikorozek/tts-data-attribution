@@ -60,21 +60,19 @@ def test_main_fails_cleanly_without_a_dataset(
 
 
 def test_main_fails_cleanly_without_the_tokenizer(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     write_dailytalk_fixture(tmp_path / "raw")
-    monkeypatch.setattr("importlib.util.find_spec", lambda name: object())
 
     assert main(encode_arguments(tmp_path)) == 1
     assert "tokenizer not found" in capsys.readouterr().err
 
 
 def test_encode_command_writes_the_dataset_and_manifest(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fake_tokenizer: FakeTokenizer
+    tmp_path: Path, fake_tokenizer: FakeTokenizer
 ) -> None:
     write_dailytalk_fixture(tmp_path / "raw")
     (tmp_path / "tokenizer").mkdir()
-    monkeypatch.setattr("importlib.util.find_spec", lambda name: object())
 
     assert main(encode_arguments(tmp_path)) == 0
 

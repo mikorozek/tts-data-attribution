@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
 import numpy as np
@@ -36,10 +35,6 @@ class FakeUpstreamModel:
         return cls()
 
 
-class FakeQwenTts:
-    Qwen3TTSModel = FakeUpstreamModel
-
-
 class FakeLibrosa:
     @staticmethod
     def load(path: str, sr: int, mono: bool) -> tuple[np.ndarray, int]:
@@ -61,9 +56,10 @@ def workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         for index in range(6)
     ).to_jsonl(tmp_path / "encoded.jsonl")
     (tmp_path / "model").mkdir()
-    monkeypatch.setattr("importlib.util.find_spec", lambda name: object())
-    monkeypatch.setitem(sys.modules, "qwen_tts", FakeQwenTts())
-    monkeypatch.setitem(sys.modules, "librosa", FakeLibrosa())
+    monkeypatch.setattr(
+        "tts_data_attribution.cli.experiment.Qwen3TTSModel", FakeUpstreamModel
+    )
+    monkeypatch.setattr("tts_data_attribution.cli.experiment.librosa", FakeLibrosa())
     FakeUpstreamModel.loaded.clear()
     FakeUpstreamModel.inner = FakeInnerModel()
     return tmp_path

@@ -44,7 +44,7 @@ The package installs the `tda` command, the single user surface of the
 framework. Prepare a provided dataset with:
 
 ```bash
-uv run --group qwen tda data encode dailytalk qwen3-tts \
+uv run tda data encode dailytalk qwen3-tts \
   --data-root data/raw/dailytalk \
   --tokenizer-path artifacts/models/Qwen3-TTS-Tokenizer-12Hz-7dd38ad \
   --output data/processed/dailytalk_qwen3tts.jsonl
@@ -67,7 +67,7 @@ reference utterances, training pool, and subsets), and `speaker_embeddings.pt`
 (one speaker-encoder vector per reference utterance):
 
 ```bash
-uv run --group qwen tda experiment init voice-study-1 \
+uv run tda experiment init voice-study-1 \
   --dataset data/processed/dailytalk_qwen3tts.jsonl \
   --audio-root data/raw/dailytalk \
   --model qwen3-tts \

@@ -4,6 +4,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Protocol, Self
 
+from qwen_tts import Qwen3TTSTokenizer
 from torch.utils.data import DataLoader
 
 from ...dataset import Utterance, UtteranceDataset
@@ -19,8 +20,6 @@ class Qwen3TTSEncoder:
 
     @classmethod
     def from_pretrained(cls, tokenizer_path: str | Path, device: str) -> Self:
-        from qwen_tts import Qwen3TTSTokenizer
-
         return cls(
             Qwen3TTSTokenizer.from_pretrained(str(tokenizer_path), device_map=device)
         )

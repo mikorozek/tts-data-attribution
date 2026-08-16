@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import hashlib
-import importlib.util
 import json
 from pathlib import Path
 
@@ -36,11 +35,6 @@ def run_encode(arguments: argparse.Namespace) -> None:
             f"no dataset found at {arguments.data_root}: metadata.json is missing; "
             "provide the extracted dataset there and verify it against "
             "references/sources.yaml"
-        )
-    if importlib.util.find_spec("qwen_tts") is None:
-        raise CommandError(
-            "encoding needs the vendored qwen-tts package; "
-            "run: uv run --group qwen tda data encode dailytalk qwen3-tts ..."
         )
     if not arguments.tokenizer_path.exists():
         raise CommandError(f"tokenizer not found at {arguments.tokenizer_path}")

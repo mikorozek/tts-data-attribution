@@ -55,10 +55,10 @@ Behavior:
 - writes a manifest sidecar with the tokenizer path, utterance count, and
   output content hash.
 
-Encoding needs the vendored `qwen-tts` package and a GPU:
+Encoding needs a GPU:
 
 ```bash
-uv run --group qwen tda data encode dailytalk qwen3-tts \
+uv run tda data encode dailytalk qwen3-tts \
   --data-root data/raw/dailytalk \
   --tokenizer-path artifacts/models/Qwen3-TTS-Tokenizer-12Hz-7dd38ad \
   --output data/processed/dailytalk_qwen3tts.jsonl
@@ -79,7 +79,7 @@ Validation, in order, before anything is created:
   `training_pool_size` ≤ candidate utterances, `subset_size` ≤
   `training_pool_size`;
 - the model must load through the upstream `Qwen3TTSModel.from_pretrained`
-  (needs the `qwen` group and a device);
+  on the given device;
 - the experiment directory must not exist yet.
 
 `manifest.yaml` records what was asked for:

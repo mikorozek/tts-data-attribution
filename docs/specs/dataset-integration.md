@@ -78,8 +78,8 @@ the only place that serializes utterances:
 only the missing utterances in `DataLoader` batches of `batch_size`, and appends
 one line per utterance after each batch through `to_jsonl(append=True)`. An
 interrupted run resumes by rerunning the same command. The tokenizer is
-constructed by `from_pretrained`, the only place that imports `qwen_tts`; tests
-inject a fake tokenizer through the constructor.
+constructed by `from_pretrained`; tests inject a fake tokenizer through the
+constructor.
 
 There is no schema validator. `JSONDecodeError`, `TypeError`, and `OSError`
 propagate unchanged.
