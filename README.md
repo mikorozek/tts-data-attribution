@@ -30,7 +30,7 @@ any scaled run.
 - `tests/` contains executable behavior checks.
 - `data/` contains ignored source dataset assets and derived dataset products.
 - `artifacts/` contains ignored downloaded upstream model assets.
-- `experiments/` contains ignored local experiment workspaces: configuration, plan, materialized training data, and run outputs.
+- `experiments/` contains ignored local experiment workspaces: manifest, plan, speaker embeddings, and run outputs.
 
 ## Providing the dataset
 

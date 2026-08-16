@@ -116,7 +116,7 @@ data/ and artifacts/       ignored source dataset and model assets
 experiments/               ignored local experiment workspaces
 ```
 
-Add a module, command, or configuration only with its first concrete consumer. The `tda` CLI package only parses arguments and composes reusable implementation; dataset, model, and training logic must stay importable and testable without it. An experiment configuration lives inside its experiment directory under `experiments/`, next to the plan, materialized data, and run outputs derived from it. Experiment workspaces are local and never tracked; each run stays reproducible through the resolved manifest saved with it.
+Add a module, command, or configuration only with its first concrete consumer. The `tda` CLI package only parses arguments and composes reusable implementation; dataset, model, and training logic must stay importable and testable without it. An experiment is defined once by `tda experiment init`; its manifest, plan, speaker embeddings, and run outputs live together in its directory under `experiments/`. Experiment workspaces are local and never tracked; each run stays reproducible through the manifests saved with it.
 
 ## Repository map
 
