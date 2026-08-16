@@ -64,7 +64,10 @@ def test_dataset_has_a_stable_jsonl_round_trip(tmp_path: Path) -> None:
     UtteranceDataset(utterances).to_jsonl(path)
 
     assert UtteranceDataset.from_jsonl(path).utterances == tuple(utterances)
-    assert json.loads(path.read_text(encoding="utf-8").splitlines()[1])["audio_codes"] is None
+    assert (
+        json.loads(path.read_text(encoding="utf-8").splitlines()[1])["audio_codes"]
+        is None
+    )
 
 
 def test_missing_required_field_raises_type_error(tmp_path: Path) -> None:

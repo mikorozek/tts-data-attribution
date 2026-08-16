@@ -11,7 +11,11 @@ from tts_data_attribution.models.qwen3_tts import Qwen3TTSEncoder
 
 def utterance(identifier: str) -> Utterance:
     return Utterance(
-        id=identifier, text="hi", speaker="0", dialogue="2", audio_path=f"data/{identifier}.wav"
+        id=identifier,
+        text="hi",
+        speaker="0",
+        dialogue="2",
+        audio_path=f"data/{identifier}.wav",
     )
 
 

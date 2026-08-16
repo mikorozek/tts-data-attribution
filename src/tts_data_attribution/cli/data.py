@@ -34,7 +34,8 @@ def run_encode(arguments: argparse.Namespace) -> None:
     if not (arguments.data_root / "metadata.json").is_file():
         raise CommandError(
             f"no dataset found at {arguments.data_root}: metadata.json is missing; "
-            "provide the extracted dataset there and verify it against references/sources.yaml"
+            "provide the extracted dataset there and verify it against "
+            "references/sources.yaml"
         )
     if importlib.util.find_spec("qwen_tts") is None:
         raise CommandError(
@@ -44,7 +45,9 @@ def run_encode(arguments: argparse.Namespace) -> None:
     if not arguments.tokenizer_path.exists():
         raise CommandError(f"tokenizer not found at {arguments.tokenizer_path}")
     dataset = DATASETS[arguments.dataset](arguments.data_root)
-    encoder = ENCODERS[arguments.model].from_pretrained(arguments.tokenizer_path, arguments.device)
+    encoder = ENCODERS[arguments.model].from_pretrained(
+        arguments.tokenizer_path, arguments.device
+    )
     encoder.encode(dataset, arguments.data_root, arguments.output, arguments.batch_size)
     write_manifest(arguments.output, arguments.tokenizer_path, len(dataset))
     print(f"encoded data ready at {arguments.output}")

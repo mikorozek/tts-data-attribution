@@ -79,7 +79,9 @@ def test_encode_command_writes_the_dataset_and_manifest(
     assert main(encode_arguments(tmp_path)) == 0
 
     output = tmp_path / "encoded.jsonl"
-    records = [json.loads(line) for line in output.read_text(encoding="utf-8").splitlines()]
+    records = [
+        json.loads(line) for line in output.read_text(encoding="utf-8").splitlines()
+    ]
     assert [record["id"] for record in records] == ["2-0", "2-1", "10-0"]
     assert records[0] == {
         "audio_codes": [[7] * 16] * 2,
@@ -89,7 +91,9 @@ def test_encode_command_writes_the_dataset_and_manifest(
         "speaker": "0",
         "text": "First",
     }
-    assert json.loads((tmp_path / "encoded.manifest.json").read_text(encoding="utf-8")) == {
+    assert json.loads(
+        (tmp_path / "encoded.manifest.json").read_text(encoding="utf-8")
+    ) == {
         "output_sha256": hashlib.sha256(output.read_bytes()).hexdigest(),
         "tokenizer_path": (tmp_path / "tokenizer").as_posix(),
         "utterance_count": 3,
