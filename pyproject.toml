@@ -27,5 +27,17 @@ packages = ["src/tts_data_attribution"]
 testpaths = ["tests"]
 addopts = "-ra"
 
+[tool.black]
+line-length = 88
+target-version = ["py311"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]
