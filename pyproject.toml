@@ -9,12 +9,13 @@ description = "Reusable TrackStar/LDS data-attribution experiment framework"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "Research code license TBD" }
-dependencies = ["numpy>=1.26", "torch>=2.0"]
+dependencies = ["numpy>=1.26", "pyyaml>=6", "torch>=2.0"]
 
 [project.scripts]
 tda = "tts_data_attribution.cli.main:main"
 
 [dependency-groups]
+dev = ["pytest>=8"]
 qwen = ["qwen-tts"]
 
 [tool.uv.sources]

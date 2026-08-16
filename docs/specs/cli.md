@@ -1,6 +1,6 @@
 # CLI
 
-Status: **`tda data encode` implemented; experiment commands specified, not yet implemented**
+Status: **`tda data encode` and `tda experiment init` implemented; other experiment commands specified, not yet implemented**
 
 ## Scope
 
@@ -19,12 +19,13 @@ tda
 ├── data
 │   └── encode   <dataset> <model>   [--data-root] [--output] [--tokenizer-path]
 │                                    [--device] [--batch-size]
-└── experiment                                                    (planned)
-    ├── init        <name>   --dataset <dataset>
-    ├── plan        <name>
-    ├── materialize <name>   [--device]
-    ├── train       <name>   (--target | --subset <number>)
-    └── status      <name>
+└── experiment
+    ├── init        <name>   --dataset <encoded.jsonl> --model <model> --model-path <dir>
+    │                        [--device] [--root]
+    ├── plan        <name>                                            (planned)
+    ├── materialize <name>   [--device]                               (planned)
+    ├── train       <name>   (--target | --subset <number>)           (planned)
+    └── status      <name>                                            (planned)
 ```
 
 ## tda data encode
@@ -63,14 +64,31 @@ uv run --group qwen tda data encode dailytalk qwen3-tts \
   --output data/processed/dailytalk_qwen3tts.jsonl
 ```
 
-## Experiment commands (planned)
+## tda experiment init
 
 One experiment is one directory `experiments/<name>/`, never tracked by git.
+`init` pins what the experiment is — one encoded dataset and one model — and
+validates both before it creates anything:
 
-- `init` writes `config.yaml` from a template with the dataset filled in and
-  refuses to overwrite an existing experiment. The config uses descriptive
-  keys: `training_pool_size`, `subset_count`, `subset_size`, `speaker_count`,
-  `sampling_seed`.
+- the encoded dataset must load through `UtteranceDataset.from_jsonl`;
+- the model must load through the upstream `Qwen3TTSModel.from_pretrained`
+  (needs the `qwen` group and a device);
+- the experiment directory must not exist yet.
+
+It then writes `config.yaml` with exactly three keys:
+
+```yaml
+dataset: data/processed/dailytalk_qwen3tts.jsonl
+model: qwen3-tts
+model_path: artifacts/models/Qwen3-TTS-12Hz-1.7B-Base-fd4b254
+```
+
+Every later command reads this file and never takes a data or model path
+again. Values that vary between iterations of the same experiment (sampling
+sizes, seeds, training settings) belong to the later stages, not to `init`.
+
+## Experiment commands (planned)
+
 - `plan` makes every decision and no computation: it samples the training
   pool and subset ID lists by utterance, plus one reference utterance per
   speaker (excluded from the pool), all from `sampling_seed`, and writes
