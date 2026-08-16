@@ -1,3 +1,3 @@
-from .codes import CodesEncoder, expected_frame_count, validate_codes
+from .codes import AudioCodesTokenizer, CodesEncoder
 
-__all__ = ["CodesEncoder", "expected_frame_count", "validate_codes"]
+__all__ = ["AudioCodesTokenizer", "CodesEncoder"]

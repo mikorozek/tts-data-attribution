@@ -4,111 +4,90 @@ Status: **implemented; intentionally small**
 
 ## Scope
 
-A concrete dataset integration converts its source into model-independent
-`DatasetExample` values. `AttributionDataset` stores those values, implements the
-PyTorch dataset interface, and optionally persists them as JSONL.
+A dataset integration turns its source into `Utterance` values. `UtteranceDataset`
+stores them, implements the PyTorch dataset interface, and reads or writes JSONL.
+Encoding fills the `audio_codes` of every utterance and appends the result to the
+encoded JSONL that training later consumes.
 
 ```text
-raw dataset → concrete integration → AttributionDataset → PyTorch DataLoader
-                                      ↕
-                                examples.jsonl
+raw dataset → load_<dataset>() → UtteranceDataset → encode_utterances() → <dataset>_encoded.jsonl
 ```
-
-The generic dataset types live in `tts_data_attribution.dataset`. Concrete
-dataset implementations are added to that package only with their first tested
-behavior.
 
 ## API
 
 ```python
 @dataclass(frozen=True)
-class DatasetExample:
+class Utterance:
     id: str
-    payload: Mapping[str, JsonValue]
-    groups: Mapping[str, str] | None = None
-    metadata: Mapping[str, JsonValue] | None = None
+    text: str
+    speaker: str
+    dialogue: str
+    audio_path: str
+    audio_codes: list[list[int]] | None = None
+
+    def to_json(self) -> str: ...
 
 
-class AttributionDataset(torch.utils.data.Dataset[DatasetExample]):
-    def __init__(self, examples: Iterable[DatasetExample]) -> None: ...
+class UtteranceDataset(torch.utils.data.Dataset[Utterance]):
+    def __init__(self, utterances: Iterable[Utterance]) -> None: ...
 
     @classmethod
     def from_jsonl(cls, path: str | Path) -> Self: ...
 
     def to_jsonl(self, path: str | Path) -> None: ...
 
-    def __len__(self) -> int: ...
+    def ids(self) -> set[str]: ...
 
-    def __getitem__(self, index: int) -> DatasetExample: ...
+
+def load_dailytalk(root: str | Path) -> UtteranceDataset: ...
+
+
+def encode_utterances(
+    dataset: UtteranceDataset,
+    audio_root: Path,
+    encoder: Callable[[list[Path]], list[torch.Tensor]],
+    output: Path,
+    batch_size: int,
+) -> None: ...
 ```
 
-`AttributionDataset` is already a PyTorch dataset. It can be passed directly to a
-`DataLoader` without an adapter. Model-specific loading, transforms, collation,
-and tensor construction remain separate concerns.
+## Utterance contract
 
-## Example contract
+- `id` identifies the same utterance across repeated loads and runs.
+- `text` is the transcript the model must speak.
+- `speaker` selects the reference voice at experiment time.
+- `dialogue` is an analysis label; sampling does not group by it.
+- `audio_path` is portable and relative to the dataset root.
+- `audio_codes` is `None` after loading and one list of 16 integers per
+  12.5 Hz frame after encoding.
 
-- `id` identifies the same logical example across repeated indexing runs.
-- `payload` contains model-independent inputs, targets, and asset references.
-- `groups` contains identities used later to prevent split leakage.
-- `metadata` contains optional descriptive values.
-- Paths are portable strings, normally relative to a separately configured
-  dataset root.
+One JSONL line per utterance, keys sorted, UTF-8 preserved:
 
-```python
-DatasetExample(
-    id="dialogue-001/turn-003",
-    payload={
-        "audio_path": "audio/dialogue-001/turn-003.wav",
-        "text": "Hello.",
-    },
-    groups={"conversation": "dialogue-001", "speaker": "speaker-a"},
-    metadata={"duration_seconds": 0.8},
-)
+```json
+{"audio_codes":[[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15]],"audio_path":"data/2/0_0_d2.wav","dialogue":"2","id":"2-0","speaker":"0","text":"Hello"}
 ```
 
-## JSONL behavior
+## Encoding behavior
 
-`AttributionDataset.from_jsonl()` decodes every line with `json.loads()` and passes
-the resulting mapping directly to the generated dataclass constructor:
+`encode_utterances()` reads the IDs already present in the output, encodes only
+the missing utterances in batches, and appends one line per utterance after
+each batch. An interrupted run resumes by rerunning the same command. The
+encoder is any callable from audio paths to one `(frames, 16)` tensor per path;
+`CodesEncoder` in `models.qwen3_tts` wraps the pinned 12Hz tokenizer.
 
-```python
-DatasetExample(**json.loads(line))
-```
+There is no schema validator. `JSONDecodeError`, `TypeError`, and `OSError`
+propagate unchanged.
 
-`AttributionDataset.to_jsonl()` serializes each example with `dataclasses.asdict()`
-and `json.dump()`. Object keys are sorted and UTF-8 is preserved, so the same
-ordered examples produce stable bytes.
+## DailyTalk
 
-There is no custom schema validator or format exception. Standard exceptions
-such as `JSONDecodeError`, `TypeError`, and `OSError` propagate unchanged. Python
-type annotations are not runtime validators.
-
-## Integration boundary
-
-The framework does not define a registry or a custom integration protocol. A
-concrete integration can subclass `AttributionDataset` or construct one from its
-source. Adding an integration does not require changes to the generic dataset
-module.
-
-`DailyTalkDataset` is the first concrete implementation. Its
-`from_directory()` constructor reads the official `metadata.json` and
-per-utterance transcript files, produces stable numeric dialogue/utterance
-ordering, stores relative audio paths and transcripts in `payload`, and exposes
-speaker and dialogue identities through `groups`.
-
-The official archive contains 23,773 utterances across 2,541 dialogues. Eight
-metadata transcripts differ from their per-utterance text files, so the
-integration uses the text files that accompany the audio. The source `turn`
-value is inconsistent for dialogue 1451 and is therefore not copied into the
-canonical metadata. Exact validation counts are recorded in
-`references/sources.yaml`.
+`load_dailytalk()` reads the official `metadata.json`, orders dialogues and
+utterances numerically, and takes each transcript from the per-utterance text
+file next to the audio. Eight metadata transcripts differ from those files, so
+the text files win. Exact counts are recorded in `references/sources.yaml`.
 
 ## Deliberately outside this interface
 
 - integration registries and plugin discovery;
 - dataset downloading;
-- model-specific waveform loading, resampling, tokenization, and collation;
-- split orchestration;
-- source fingerprints and schema migrations;
-- multi-dataset orchestration.
+- split orchestration and reference-voice selection (experiment plan);
+- model-specific collation and tensor construction (training).

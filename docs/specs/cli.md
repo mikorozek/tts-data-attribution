@@ -41,7 +41,7 @@ data/processed/dailytalk_encoded.jsonl
 Each line is one utterance with this shape:
 
 ```json
-{"audio_codes":[[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15]],"dialogue":"2","id":"2-0","speaker":"0","text":"Hello"}
+{"audio_codes":[[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15]],"audio_path":"data/2/0_0_d2.wav","dialogue":"2","id":"2-0","speaker":"0","text":"Hello"}
 ```
 
 `audio_codes` contains one list of 16 integers per frame.
@@ -52,10 +52,8 @@ Behavior:
   `--data-root`;
 - writes the output file line by line and, on restart, skips IDs that are
   already encoded;
-- validates every result: code shape `(frames, 16)` and frame count consistent
-  with the audio duration at 12.5 frames per second;
-- writes a manifest sidecar with the tokenizer path, counts, and output content
-  hash.
+- writes a manifest sidecar with the tokenizer path, utterance count, and
+  output content hash.
 
 Encoding needs the vendored `qwen-tts` package and a GPU:
 

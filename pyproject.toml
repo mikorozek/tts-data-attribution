@@ -12,7 +12,7 @@ license = { text = "Research code license TBD" }
 dependencies = ["numpy>=1.26", "torch>=2.0"]
 
 [project.scripts]
-tda = "tts_data_attribution.cli:main"
+tda = "tts_data_attribution.cli.main:main"
 
 [dependency-groups]
 qwen = ["qwen-tts"]
@@ -26,3 +26,6 @@ packages = ["src/tts_data_attribution"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra"
+
+[tool.ruff]
+line-length = 100

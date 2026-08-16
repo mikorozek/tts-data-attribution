@@ -1,10 +1,5 @@
-from .dailytalk import DailyTalkDataset
-from .example import AttributionDataset, DatasetExample, JsonScalar, JsonValue
+from .dailytalk import load_dailytalk
+from .encoding import encode_utterances
+from .utterance import Utterance, UtteranceDataset
 
-__all__ = [
-    "AttributionDataset",
-    "DailyTalkDataset",
-    "DatasetExample",
-    "JsonScalar",
-    "JsonValue",
-]
+__all__ = ["Utterance", "UtteranceDataset", "encode_utterances", "load_dailytalk"]
