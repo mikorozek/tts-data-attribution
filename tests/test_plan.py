@@ -29,6 +29,7 @@ def dataset(
 def manifest(**overrides: object) -> ExperimentManifest:
     values = dict(
         dataset=Path("encoded.jsonl"),
+        audio_root=Path("raw"),
         model="qwen3-tts",
         model_path=Path("model"),
         training_pool_size=8,

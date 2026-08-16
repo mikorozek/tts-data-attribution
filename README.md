@@ -62,12 +62,14 @@ speaker and dialogue of every utterance; `Qwen3TTSEncoder` encodes any
 
 An experiment is one untracked directory under `experiments/`, defined by one
 command: an encoded dataset, a model, and the sampling. `init` validates all
-of it, then writes `manifest.yaml` (what was asked) and `plan.json` (the
-sampled reference utterances, training pool, and subsets):
+of it, then writes `manifest.yaml` (what was asked), `plan.json` (the sampled
+reference utterances, training pool, and subsets), and `speaker_embeddings.pt`
+(one speaker-encoder vector per reference utterance):
 
 ```bash
 uv run --group qwen tda experiment init voice-study-1 \
   --dataset data/processed/dailytalk_qwen3tts.jsonl \
+  --audio-root data/raw/dailytalk \
   --model qwen3-tts \
   --model-path artifacts/models/Qwen3-TTS-12Hz-1.7B-Base-fd4b254 \
   --training-pool-size 2000 --subset-count 50 --subset-size 1000 \

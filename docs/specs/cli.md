@@ -1,6 +1,6 @@
 # CLI
 
-Status: **`tda data encode` and `tda experiment init` implemented; `materialize`, `train`, and `status` specified, not yet implemented**
+Status: **`tda data encode` and `tda experiment init` implemented; `train` and `status` specified, not yet implemented**
 
 ## Scope
 
@@ -20,10 +20,10 @@ tda
 │   └── encode   <dataset> <model>   [--data-root] [--output] [--tokenizer-path]
 │                                    [--device] [--batch-size]
 └── experiment
-    ├── init        <name>   --dataset <encoded.jsonl> --model <model> --model-path <dir>
+    ├── init        <name>   --dataset <encoded.jsonl> --audio-root <dir>
+    │                        --model <model> --model-path <dir>
     │                        --training-pool-size N --subset-count N --subset-size N
     │                        --speaker-count N --seed N [--device] [--root]
-    ├── materialize <name>   [--device]                               (planned)
     ├── train       <name>   (--target | --subset <number>)           (planned)
     └── status      <name>                                            (planned)
 ```
@@ -68,9 +68,9 @@ uv run --group qwen tda data encode dailytalk qwen3-tts \
 
 One experiment is one directory `experiments/<name>/`, never tracked by git,
 and one command defines it completely. `init` takes the identity of the
-experiment (one encoded dataset, one model) and its sampling, validates
-everything, and writes two files. A different sampling is a different
-experiment.
+experiment (one encoded dataset with its raw audio root, one model) and its
+sampling, validates everything, and writes three files. A different sampling
+is a different experiment.
 
 Validation, in order, before anything is created:
 
@@ -85,6 +85,7 @@ Validation, in order, before anything is created:
 `manifest.yaml` records what was asked for:
 
 ```yaml
+audio_root: data/raw/dailytalk
 dataset: data/processed/dailytalk_qwen3tts.jsonl
 model: qwen3-tts
 model_path: artifacts/models/Qwen3-TTS-12Hz-1.7B-Base-fd4b254
@@ -112,20 +113,22 @@ the first `speaker_count` speaker IDs in sorted order. Sampling is by utterance;
 `dialogue` is not a constraint. The same manifest always yields a
 byte-identical plan.
 
-Every later command reads these two files and never takes a data, model, or
+`speaker_embeddings.pt` holds one speaker-encoder vector per reference
+utterance, keyed by speaker, computed by the loaded model from the reference
+wav resampled to the speaker encoder's sample rate. Training conditions every
+utterance of a speaker on this fixed vector; the reference wavs are never read
+again.
+
+Every later command reads these three files and never takes a data, model, or
 sampling value on the command line again.
 
 ## Experiment commands (planned)
 
-- `materialize` selects the encoded
-  records for the plan IDs, computes one speaker embedding per reference with
-  the model's speaker encoder, and writes `train_data.json` with a `speakers`
-  mapping and a `data` list.
 - `train` executes one run per call: the target run, or the subset run
   selected by `--subset`. Checkpoints and the resolved run manifest go to
   `experiments/<name>/runs/`. Training internals belong to the fine-tuning
   specification.
-- `status` prints stage completion: config, plan, train_data, and runs done
+- `status` prints stage completion: experiment files present and runs done
   versus `subset_count`.
 
 ## Shared rules

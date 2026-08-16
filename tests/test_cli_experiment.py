@@ -1,16 +1,34 @@
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
+import numpy as np
 import pytest
+import torch
 
 from tts_data_attribution.cli.main import main
 from tts_data_attribution.dataset import Utterance, UtteranceDataset
 from tts_data_attribution.experiment import ExperimentManifest, Plan
 
 
+class FakeInnerModel:
+    speaker_encoder_sample_rate = 24000
+
+    def __init__(self) -> None:
+        self.embedded: list[tuple[int, int]] = []
+
+    def extract_speaker_embedding(self, audio: np.ndarray, sr: int) -> torch.Tensor:
+        self.embedded.append((len(audio), sr))
+        return torch.full((4,), float(len(audio)))
+
+
 class FakeUpstreamModel:
     loaded: list[tuple[str, str]] = []
+    inner = FakeInnerModel()
+
+    def __init__(self) -> None:
+        self.model = FakeUpstreamModel.inner
 
     @classmethod
     def from_pretrained(cls, path: str, device_map: str) -> FakeUpstreamModel:
@@ -18,9 +36,18 @@ class FakeUpstreamModel:
         return cls()
 
 
+class FakeQwenTts:
+    Qwen3TTSModel = FakeUpstreamModel
+
+
+class FakeLibrosa:
+    @staticmethod
+    def load(path: str, sr: int, mono: bool) -> tuple[np.ndarray, int]:
+        return np.zeros(int(Path(path).stem.split("-")[1]) + 1, dtype=np.float32), sr
+
+
 @pytest.fixture
 def workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    dataset = tmp_path / "encoded.jsonl"
     UtteranceDataset(
         Utterance(
             id=f"{speaker}-{index}",
@@ -32,16 +59,14 @@ def workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         )
         for speaker in ("0", "1")
         for index in range(6)
-    ).to_jsonl(dataset)
+    ).to_jsonl(tmp_path / "encoded.jsonl")
     (tmp_path / "model").mkdir()
     monkeypatch.setattr("importlib.util.find_spec", lambda name: object())
-    monkeypatch.setitem(__import__("sys").modules, "qwen_tts", FakeQwenTts())
+    monkeypatch.setitem(sys.modules, "qwen_tts", FakeQwenTts())
+    monkeypatch.setitem(sys.modules, "librosa", FakeLibrosa())
     FakeUpstreamModel.loaded.clear()
+    FakeUpstreamModel.inner = FakeInnerModel()
     return tmp_path
-
-
-class FakeQwenTts:
-    Qwen3TTSModel = FakeUpstreamModel
 
 
 def init_arguments(root: Path, name: str = "study") -> list[str]:
@@ -51,6 +76,8 @@ def init_arguments(root: Path, name: str = "study") -> list[str]:
         name,
         "--dataset",
         str(root / "encoded.jsonl"),
+        "--audio-root",
+        str(root / "raw"),
         "--model",
         "qwen3-tts",
         "--model-path",
@@ -72,13 +99,14 @@ def init_arguments(root: Path, name: str = "study") -> list[str]:
     ]
 
 
-def test_init_writes_the_manifest_and_the_plan(workspace: Path) -> None:
+def test_init_writes_manifest_plan_and_speaker_embeddings(workspace: Path) -> None:
     assert main(init_arguments(workspace)) == 0
 
     directory = workspace / "experiments/study"
     manifest = ExperimentManifest.from_yaml(directory / "manifest.yaml")
     assert manifest == ExperimentManifest(
         dataset=workspace / "encoded.jsonl",
+        audio_root=workspace / "raw",
         model="qwen3-tts",
         model_path=workspace / "model",
         training_pool_size=8,
@@ -91,17 +119,14 @@ def test_init_writes_the_manifest_and_the_plan(workspace: Path) -> None:
     assert plan == Plan.sample(manifest, UtteranceDataset.from_jsonl(manifest.dataset))
     assert FakeUpstreamModel.loaded == [(str(workspace / "model"), "cpu")]
 
-
-def test_init_fails_cleanly_when_the_sampling_does_not_fit(
-    workspace: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    arguments = init_arguments(workspace)
-    arguments[arguments.index("--training-pool-size") + 1] = "11"
-
-    assert main(arguments) == 1
-    assert "training_pool_size 11 exceeds" in capsys.readouterr().err
-    assert FakeUpstreamModel.loaded == []
-    assert not (workspace / "experiments/study").exists()
+    embeddings = torch.load(directory / "speaker_embeddings.pt")
+    assert sorted(embeddings) == ["0", "1"]
+    for speaker, reference_id in plan.references.items():
+        expected_length = int(reference_id.split("-")[1]) + 1
+        assert torch.equal(
+            embeddings[speaker], torch.full((4,), float(expected_length))
+        )
+    assert all(sr == 24000 for _, sr in FakeUpstreamModel.inner.embedded)
 
 
 def test_init_refuses_an_existing_experiment(
@@ -130,6 +155,18 @@ def test_init_fails_cleanly_when_the_dataset_is_not_ours(
 
     assert main(init_arguments(workspace)) == 1
     assert "not an encoded utterance file" in capsys.readouterr().err
+    assert not (workspace / "experiments/study").exists()
+
+
+def test_init_fails_cleanly_when_the_sampling_does_not_fit(
+    workspace: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    arguments = init_arguments(workspace)
+    arguments[arguments.index("--training-pool-size") + 1] = "11"
+
+    assert main(arguments) == 1
+    assert "training_pool_size 11 exceeds" in capsys.readouterr().err
+    assert FakeUpstreamModel.loaded == []
     assert not (workspace / "experiments/study").exists()
 
 

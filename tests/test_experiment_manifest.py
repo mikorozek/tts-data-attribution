@@ -10,6 +10,7 @@ from tts_data_attribution.experiment import ExperimentManifest
 def manifest() -> ExperimentManifest:
     return ExperimentManifest(
         dataset=Path("data/processed/dailytalk_qwen3tts.jsonl"),
+        audio_root=Path("data/raw/dailytalk"),
         model="qwen3-tts",
         model_path=Path("artifacts/models/Qwen3-TTS-12Hz-1.7B-Base-fd4b254"),
         training_pool_size=2000,
@@ -27,6 +28,7 @@ def test_manifest_round_trips_through_yaml(tmp_path: Path) -> None:
 
     assert ExperimentManifest.from_yaml(path) == manifest()
     assert path.read_text(encoding="utf-8") == (
+        "audio_root: data/raw/dailytalk\n"
         "dataset: data/processed/dailytalk_qwen3tts.jsonl\n"
         "model: qwen3-tts\n"
         "model_path: artifacts/models/Qwen3-TTS-12Hz-1.7B-Base-fd4b254\n"

@@ -10,6 +10,7 @@ import yaml
 @dataclass(frozen=True)
 class ExperimentManifest:
     dataset: Path
+    audio_root: Path
     model: str
     model_path: Path
     training_pool_size: int
@@ -23,6 +24,7 @@ class ExperimentManifest:
         values = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
         return cls(
             dataset=Path(values["dataset"]),
+            audio_root=Path(values["audio_root"]),
             model=values["model"],
             model_path=Path(values["model_path"]),
             training_pool_size=values["training_pool_size"],
