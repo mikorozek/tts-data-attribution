@@ -1,37 +1,36 @@
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import pytest
 
-from tts_data_attribution.dataset import Utterance, UtteranceDataset
 from tts_data_attribution.experiment import ExperimentManifest, Plan
+
+
+@dataclass(frozen=True)
+class SourceRecord:
+    id: str
+    speaker: str
 
 
 def dataset(
     per_speaker: int = 6, speakers: tuple[str, ...] = ("0", "1")
-) -> UtteranceDataset:
-    return UtteranceDataset(
-        Utterance(
+) -> list[SourceRecord]:
+    return [
+        SourceRecord(
             id=f"{speaker}-{index}",
-            text="hi",
             speaker=speaker,
-            dialogue=str(index),
-            audio_path=f"data/{speaker}-{index}.wav",
-            audio_codes=[[1] * 16],
         )
         for speaker in speakers
         for index in range(per_speaker)
-    )
+    ]
 
 
 def manifest(**overrides: object) -> ExperimentManifest:
     values = dict(
-        dataset=Path("encoded.jsonl"),
-        audio_root=Path("raw"),
-        model="qwen3-tts",
-        model_path=Path("model"),
+        dataset="dailytalk",
+        data_root=Path("raw"),
         training_pool_size=8,
         subset_count=3,
         subset_size=4,

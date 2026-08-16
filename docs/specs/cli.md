@@ -1,94 +1,44 @@
 # CLI
 
-Status: **`tda data encode` and `tda experiment init` implemented; `train` and `status` specified, not yet implemented**
+Status: **`tda experiment init` and `tda experiment encode` implemented; training and status commands planned**
 
 ## Scope
 
-The package installs one console command, `tda`. It is the only user surface of
-the framework. The CLI layer parses arguments and composes importable modules;
-it contains no dataset, model, or training logic of its own.
-
-Obtaining datasets is out of scope. The user provides the extracted dataset on
-disk and verifies it against `references/sources.yaml`. The CLI starts at data
-that already exists.
+The `tda` command is the user-facing composition layer. Dataset, encoding, and
+experiment behavior remains importable outside the CLI.
 
 ## Command tree
 
 ```text
 tda
-├── data
-│   └── encode   <dataset> <model>   [--data-root] [--output] [--tokenizer-path]
-│                                    [--device] [--batch-size]
 └── experiment
-    ├── init        <name>   --dataset <encoded.jsonl> --audio-root <dir>
-    │                        --model <model> --model-path <dir>
-    │                        --training-pool-size N --subset-count N --subset-size N
-    │                        --speaker-count N --seed N [--device] [--root]
-    ├── train       <name>   (--target | --subset <number>)           (planned)
-    └── status      <name>                                            (planned)
+    ├── init    <name> --dataset <dataset> --data-root <dir>
+    │                  --training-pool-size N --subset-count N --subset-size N
+    │                  --speaker-count N --seed N [--root]
+    ├── encode  <name> --model <model> --model-path <dir>
+    │                  [--device] [--batch-size] [--root]
+    ├── train   <name>                                           (planned)
+    └── status  <name>                                           (planned)
 ```
 
-## tda data encode
+## `tda experiment init`
 
-One command prepares a dataset end to end: it loads the named dataset,
-validates its layout, and encodes every utterance with the named model's
-tokenizer. Datasets and models are independent choices; any pair works.
+`init` loads a raw dataset, samples the experiment, and writes no model-derived
+data. It never loads a model or requires a GPU.
 
-`--data-root`, `--tokenizer-path`, and `--output` are required: they name a
-dataset and a model, so the generic command has no default for them. The
-output is one JSONL file.
+Validation completes before the experiment directory is created:
 
-Each line is one utterance with this shape:
+- the named dataset must load from `--data-root`;
+- `speaker_count` must fit the available speakers;
+- `training_pool_size` must fit the non-reference utterances;
+- `subset_size` must not exceed `training_pool_size`;
+- the experiment directory must not already exist.
 
-```json
-{"audio_codes":[[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15]],"audio_path":"data/2/0_0_d2.wav","dialogue":"2","id":"2-0","speaker":"0","text":"Hello"}
-```
-
-`audio_codes` contains one list of 16 integers per frame.
-
-Behavior:
-
-- fails with an actionable message when the dataset layout is not at
-  `--data-root`;
-- writes the output file line by line and, on restart, skips IDs that are
-  already encoded;
-- writes a manifest sidecar with the tokenizer path, utterance count, and
-  output content hash.
-
-Encoding needs a GPU:
-
-```bash
-uv run tda data encode dailytalk qwen3-tts \
-  --data-root data/raw/dailytalk \
-  --tokenizer-path artifacts/models/Qwen3-TTS-Tokenizer-12Hz-7dd38ad \
-  --output data/processed/dailytalk_qwen3tts.jsonl
-```
-
-## tda experiment init
-
-One experiment is one directory `experiments/<name>/`, never tracked by git,
-and one command defines it completely. `init` takes the identity of the
-experiment (one encoded dataset with its raw audio root, one model) and its
-sampling, validates everything, and writes three files. A different sampling
-is a different experiment.
-
-Validation, in order, before anything is created:
-
-- the encoded dataset must load through `UtteranceDataset.from_jsonl`;
-- the sampling must fit the dataset: `speaker_count` ≤ speakers present,
-  `training_pool_size` ≤ candidate utterances, `subset_size` ≤
-  `training_pool_size`;
-- the model must load through the upstream `Qwen3TTSModel.from_pretrained`
-  on the given device;
-- the experiment directory must not exist yet.
-
-`manifest.yaml` records what was asked for:
+`manifest.yaml` records the dataset and sampling request:
 
 ```yaml
-audio_root: data/raw/dailytalk
-dataset: data/processed/dailytalk_qwen3tts.jsonl
-model: qwen3-tts
-model_path: artifacts/models/Qwen3-TTS-12Hz-1.7B-Base-fd4b254
+data_root: data/raw/dailytalk
+dataset: dailytalk
 seed: 1234
 speaker_count: 2
 subset_count: 50
@@ -96,50 +46,46 @@ subset_size: 1000
 training_pool_size: 2000
 ```
 
-`plan.json` records what the sampling produced, deterministically from `seed`:
+`plan.json` records reference utterances, the training pool, and subsets. The
+same manifest produces the same byte-stable plan.
 
-```json
-{
-  "references": {"0": "870-6", "1": "1201-3"},
-  "training_pool": ["0-0", "0-3", "..."],
-  "subsets": [["0-0", "..."], ["..."]]
-}
+## `tda experiment encode`
+
+`encode` is an explicit model-dependent materialization step. It reads the
+experiment plan and encodes the union of the training pool and reference
+utterances. It does not encode unsampled dataset records.
+
+For Qwen3-TTS, one loaded `Qwen3TTSModel` provides:
+
+- `processor` for `<|im_start|>assistant\n{text}` text IDs;
+- the bundled speech tokenizer for 16-codebook audio codes;
+- the speaker encoder for one vector per planned speaker reference.
+
+The command writes:
+
+```text
+experiments/<name>/
+├── manifest.yaml
+├── plan.json
+├── encoding.yaml
+├── sampled_utterances_encoded.jsonl
+└── speaker_embeddings.pt
 ```
 
-`references` holds one reference utterance per speaker; those utterances are
-excluded from the pool. `training_pool` is drawn from the remaining utterances
-of the chosen speakers, and every subset is drawn from the pool. Speakers are
-the first `speaker_count` speaker IDs in sorted order. Sampling is by utterance;
-`dialogue` is not a constraint. The same manifest always yields a
-byte-identical plan.
+`sampled_utterances_encoded.jsonl` contains `id`, `speaker`, `dialogue`,
+`text_ids`, and `audio_codes`. It intentionally omits raw text and audio paths.
+`encoding.yaml` records the model name and path used for the materialization.
 
-`speaker_embeddings.pt` holds one speaker-encoder vector per reference
-utterance, keyed by speaker, computed by the model's
-`SpeakerReferenceAudioEncoder` from the reference wav. Training conditions every
-utterance of a speaker on this fixed vector; the reference wavs are never read
-again.
-
-Every later command reads these three files and never takes a data, model, or
-sampling value on the command line again.
-
-## Experiment commands (planned)
-
-- `train` executes one run per call: the target run, or the subset run
-  selected by `--subset`. Checkpoints and the resolved run manifest go to
-  `experiments/<name>/runs/`. Training internals belong to the fine-tuning
-  specification.
-- `status` prints stage completion: experiment files present and runs done
-  versus `subset_count`.
+Encoding appends only complete batches. A repeated invocation with the same
+model skips encoded IDs and already stored speaker embeddings; an invocation
+with a different recorded model is rejected.
 
 ## Shared rules
 
-- Every command checks its prerequisites and names the command to run first
-  instead of raising a stack trace.
-- Errors go to stderr with exit code 1; argument misuse exits with the
-  argparse convention.
-- Paths resolve relative to the repository root and come from defaults or the
-  experiment config, never from hard-coded logic downstream.
-- A new dataset adds one class and one entry in `dataset.DATASETS`; a new
-  model adds one class per abstract encoder base and one entry in each
-  mapping exported by `models` (`UTTERANCE_AUDIO_ENCODERS`,
-  `SPEAKER_REFERENCE_AUDIO_ENCODERS`). Commands stay unchanged.
+- Errors go to stderr with exit code 1; argument misuse uses argparse errors.
+- Experiment workspaces are local and never tracked.
+- Dataset integrations own validation of their source layouts.
+- A model contributes one focused experiment encoder and one entry in
+  `models.EXPERIMENT_ENCODERS`.
+- Training, attribution, and evaluation commands consume the immutable plan
+  and encoded experiment data rather than resampling or re-encoding it.

@@ -30,7 +30,7 @@ any scaled run.
 - `tests/` contains executable behavior checks.
 - `data/` contains ignored source dataset assets and derived dataset products.
 - `artifacts/` contains ignored downloaded upstream model assets.
-- `experiments/` contains ignored local experiment workspaces: manifest, plan, speaker embeddings, and run outputs.
+- `experiments/` contains ignored local experiment workspaces: manifest, plan, encoded examples, speaker embeddings, and run outputs.
 
 ## Providing the dataset
 
@@ -40,54 +40,48 @@ sizes and checksums recorded in [`references/sources.yaml`](references/sources.y
 
 ## CLI
 
-The package installs the `tda` command, the single user surface of the
-framework. Prepare a provided dataset with:
-
-```bash
-uv run tda data encode dailytalk qwen3-tts \
-  --data-root data/raw/dailytalk \
-  --tokenizer-path artifacts/models/Qwen3-TTS-Tokenizer-12Hz-7dd38ad \
-  --output data/processed/dailytalk_qwen3tts.jsonl
-```
-
-One invocation loads the named dataset and encodes every utterance with the
-named model's tokenizer. It writes complete utterance records to `--output`
-and a manifest with its content hash.
-The command validates the dataset layout and resumes after interruption by
-skipping already-encoded IDs.
-
-`DailyTalkDataset` reads the per-utterance transcript files and keeps the
-speaker and dialogue of every utterance; `Qwen3TTSUtteranceAudioEncoder`
-encodes any `UtteranceDataset` with the pinned 12Hz tokenizer.
-
-An experiment is one untracked directory under `experiments/`, defined by one
-command: an encoded dataset, a model, and the sampling. `init` validates all
-of it, then writes `manifest.yaml` (what was asked), `plan.json` (the sampled
-reference utterances, training pool, and subsets), and `speaker_embeddings.pt`
-(one speaker-encoder vector per reference utterance):
+The package installs the `tda` command. First sample an experiment from a raw
+dataset without loading a model:
 
 ```bash
 uv run tda experiment init voice-study-1 \
-  --dataset data/processed/dailytalk_qwen3tts.jsonl \
-  --audio-root data/raw/dailytalk \
-  --model qwen3-tts \
-  --model-path artifacts/models/Qwen3-TTS-12Hz-1.7B-Base-fd4b254 \
+  --dataset dailytalk \
+  --data-root data/raw/dailytalk \
   --training-pool-size 2000 --subset-count 50 --subset-size 1000 \
   --speaker-count 2 --seed 1234
-``` The full command surface, including
-the planned experiment commands, is specified in
-[`docs/specs/cli.md`](docs/specs/cli.md).
+```
+
+This writes `manifest.yaml` and the deterministic `plan.json`. Encode exactly
+the sampled utterances in a separate, explicit step:
+
+```bash
+uv run tda experiment encode voice-study-1 \
+  --model qwen3-tts \
+  --model-path artifacts/models/Qwen3-TTS-12Hz-1.7B-Base-fd4b254 \
+  --device cuda:0 --batch-size 16
+```
+
+One Qwen model supplies the text processor, bundled 12 Hz speech tokenizer,
+and speaker encoder. The command writes
+`sampled_utterances_encoded.jsonl`, `speaker_embeddings.pt`, and
+`encoding.yaml` inside the experiment directory. It appends complete batches
+and skips already encoded IDs when resumed.
 
 ## Dataset API
 
-`Utterance` is one spoken sentence: `id`, `text`, `speaker`, `dialogue`,
-`audio_path`, and, after encoding, `audio_codes`. `UtteranceDataset` stores
-utterances, implements `torch.utils.data.Dataset`, and reads or writes JSONL.
+`DailyTalkDataset` transiently exposes raw source records for sampling and
+encoding; it is never serialized. `Utterance` is the persisted, model-ready
+record containing `id`, grouping metadata, `text_ids`, and 16-codebook
+`audio_codes`. `UtteranceDataset` implements `torch.utils.data.Dataset` and
+stable JSONL serialization.
 
 ```python
 from tts_data_attribution.dataset import UtteranceDataset
 
-encoded = UtteranceDataset.from_jsonl("data/processed/dailytalk_qwen3tts.jsonl")
+encoded = UtteranceDataset.from_jsonl(
+    "experiments/voice-study-1/sampled_utterances_encoded.jsonl"
+)
+encoded[0].text_ids
 encoded[0].audio_codes
 ```
 

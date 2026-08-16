@@ -3,11 +3,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
-import torch
-
-from tts_data_attribution.models.qwen3_tts import Qwen3TTSUtteranceAudioEncoder
-
 
 def write_dailytalk_fixture(root: Path) -> None:
     metadata = {
@@ -46,28 +41,3 @@ def write_dailytalk_utterance(
     stem = f"{utterance_id}_{speaker}_d{dialogue_id}"
     (directory / f"{stem}.txt").write_text(text, encoding="utf-8")
     (directory / f"{stem}.wav").write_bytes(b"")
-
-
-class FakeEncoded:
-    def __init__(self, audio_codes: list[torch.Tensor]) -> None:
-        self.audio_codes = audio_codes
-
-
-class FakeTokenizer:
-    def __init__(self) -> None:
-        self.received: list[list[str]] = []
-
-    def encode(self, audios: list[str]) -> FakeEncoded:
-        self.received.append(audios)
-        return FakeEncoded([torch.full((2, 16), 7, dtype=torch.long) for _ in audios])
-
-
-@pytest.fixture
-def fake_tokenizer(monkeypatch: pytest.MonkeyPatch) -> FakeTokenizer:
-    tokenizer = FakeTokenizer()
-    monkeypatch.setattr(
-        Qwen3TTSUtteranceAudioEncoder,
-        "from_pretrained",
-        classmethod(lambda cls, tokenizer_path, device: cls(tokenizer)),
-    )
-    return tokenizer

@@ -12,11 +12,10 @@ from torch.utils.data import Dataset
 @dataclass(frozen=True)
 class Utterance:
     id: str
-    text: str
     speaker: str
     dialogue: str
-    audio_path: str
-    audio_codes: list[list[int]] | None = None
+    text_ids: list[int]
+    audio_codes: list[list[int]]
 
 
 class UtteranceDataset(Dataset[Utterance]):

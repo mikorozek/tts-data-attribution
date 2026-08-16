@@ -9,10 +9,8 @@ import yaml
 
 @dataclass(frozen=True)
 class ExperimentManifest:
-    dataset: Path
-    audio_root: Path
-    model: str
-    model_path: Path
+    dataset: str
+    data_root: Path
     training_pool_size: int
     subset_count: int
     subset_size: int
@@ -23,10 +21,8 @@ class ExperimentManifest:
     def from_yaml(cls, path: str | Path) -> Self:
         values = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
         return cls(
-            dataset=Path(values["dataset"]),
-            audio_root=Path(values["audio_root"]),
-            model=values["model"],
-            model_path=Path(values["model_path"]),
+            dataset=values["dataset"],
+            data_root=Path(values["data_root"]),
             training_pool_size=values["training_pool_size"],
             subset_count=values["subset_count"],
             subset_size=values["subset_size"],

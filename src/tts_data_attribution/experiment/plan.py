@@ -2,12 +2,20 @@ from __future__ import annotations
 
 import json
 import random
+from collections.abc import Collection
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Self
+from typing import Protocol, Self
 
-from ..dataset import UtteranceDataset
 from .manifest import ExperimentManifest
+
+
+class _SourceRecord(Protocol):
+    @property
+    def id(self) -> str: ...
+
+    @property
+    def speaker(self) -> str: ...
 
 
 @dataclass(frozen=True)
@@ -17,7 +25,9 @@ class Plan:
     subsets: list[list[str]]
 
     @classmethod
-    def sample(cls, manifest: ExperimentManifest, dataset: UtteranceDataset) -> Self:
+    def sample(
+        cls, manifest: ExperimentManifest, dataset: Collection[_SourceRecord]
+    ) -> Self:
         rng = random.Random(manifest.seed)
         speakers = sorted({utterance.speaker for utterance in dataset})
         if manifest.speaker_count > len(speakers):

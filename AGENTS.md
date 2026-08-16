@@ -116,7 +116,7 @@ data/ and artifacts/       ignored source dataset and model assets
 experiments/               ignored local experiment workspaces
 ```
 
-Add a module, command, or configuration only with its first concrete consumer. The `tda` CLI package only parses arguments and composes reusable implementation; dataset, model, and training logic must stay importable and testable without it. An experiment is defined once by `tda experiment init`; its manifest, plan, speaker embeddings, and run outputs live together in its directory under `experiments/`. Experiment workspaces are local and never tracked; each run stays reproducible through the manifests saved with it.
+Add a module, command, or configuration only with its first concrete consumer. The `tda` CLI package only parses arguments and composes reusable implementation; dataset, model, and training logic must stay importable and testable without it. An experiment is sampled once by `tda experiment init` and its selected examples are materialized explicitly by `tda experiment encode`; its manifest, plan, encoded examples, speaker embeddings, and run outputs live together in its directory under `experiments/`. Experiment workspaces are local and never tracked; each run stays reproducible through the manifests saved with it.
 
 ## Repository map
 
@@ -144,7 +144,7 @@ Model links, dataset links, local asset paths, and immutable source details belo
 - Put construction and serialization behavior on the domain type it belongs to; reserve module-level functions for behavior that has no natural owner.
 - Keep large data, weights, optimizer states, checkpoints, gradient features, generated media, and run logs out of Git.
 - Never silently update pinned upstream code or artifacts.
-- Model behavior the framework needs is composed in `src/` classes around upstream objects when a wrapper can reach what it needs (`Qwen3TTSUtteranceAudioEncoder`, `Qwen3TTSSpeakerReferenceAudioEncoder`); each model contributes one class per abstract base and one entry in the mapping exported by its package. Edit vendored source in `third_party/` only for training-forward, loss, or gradient behavior a wrapper cannot reach: keep it minimal, preserve licenses and provenance, record it in that vendor directory's `PATCHES.md`, and cover it with tests. Never bump the pinned upstream without carrying recorded changes over.
+- Model behavior the framework needs is composed in `src/` classes around upstream objects when a wrapper can reach what it needs (`Qwen3TTSEncoder`); each model contributes one focused encoder and one entry in the mapping exported by its package. Edit vendored source in `third_party/` only for training-forward, loss, or gradient behavior a wrapper cannot reach: keep it minimal, preserve licenses and provenance, record it in that vendor directory's `PATCHES.md`, and cover it with tests. Never bump the pinned upstream without carrying recorded changes over.
 - Every completed run must be reproducible from its resolved manifest and immutable inputs.
 - Add reusable behavior only when it is generic; otherwise keep it in a focused dataset, model, script, or configuration component.
 

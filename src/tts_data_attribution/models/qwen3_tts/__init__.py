@@ -1,4 +1,3 @@
-from .speaker_reference_audio_encoder import Qwen3TTSSpeakerReferenceAudioEncoder
-from .utterance_audio_encoder import Qwen3TTSUtteranceAudioEncoder
+from .encoder import Qwen3TTSEncoder
 
-__all__ = ["Qwen3TTSSpeakerReferenceAudioEncoder", "Qwen3TTSUtteranceAudioEncoder"]
+__all__ = ["Qwen3TTSEncoder"]
