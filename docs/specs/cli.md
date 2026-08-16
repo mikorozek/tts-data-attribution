@@ -35,7 +35,7 @@ validates it, and encodes every utterance with the pinned 12Hz tokenizer.
 The output is one JSONL file:
 
 ```text
-data/processed/dailytalk_encoded.jsonl
+data/processed/dailytalk_qwen3tts.jsonl
 ```
 
 Each line is one utterance with this shape:

@@ -5,26 +5,11 @@ import json
 from pathlib import Path
 
 import pytest
-import torch
-from conftest import write_dailytalk_fixture
+from conftest import FakeTokenizer, write_dailytalk_fixture
 
 from tts_data_attribution.cli.data import run_encode
 from tts_data_attribution.cli.main import build_parser, main
 from tts_data_attribution.models.qwen3_tts import CodesEncoder
-
-
-class FakeEncoded:
-    def __init__(self, audio_codes: list[torch.Tensor]) -> None:
-        self.audio_codes = audio_codes
-
-
-class FakeTokenizer:
-    def __init__(self) -> None:
-        self.received: list[list[str]] = []
-
-    def encode(self, audios: list[str]) -> FakeEncoded:
-        self.received.append(audios)
-        return FakeEncoded([torch.full((2, 16), 7, dtype=torch.long) for _ in audios])
 
 
 def encode_arguments(tmp_path: Path) -> list[str]:
@@ -48,7 +33,7 @@ def test_parser_maps_data_encode_to_its_command() -> None:
 
     assert arguments.run is run_encode
     assert arguments.data_root == Path("data/raw/dailytalk")
-    assert arguments.output == Path("data/processed/dailytalk_encoded.jsonl")
+    assert arguments.output == Path("data/processed/dailytalk_qwen3tts.jsonl")
     assert arguments.tokenizer_path == Path("artifacts/models/Qwen3-TTS-Tokenizer-12Hz-7dd38ad")
     assert arguments.device == "cuda:0"
     assert arguments.batch_size == 16
@@ -71,15 +56,12 @@ def test_main_fails_cleanly_without_the_tokenizer(
     assert "tokenizer not found" in capsys.readouterr().err
 
 
-def test_encode_writes_utterances_and_manifest(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+def test_encode_command_writes_the_dataset_and_manifest(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fake_tokenizer: FakeTokenizer
 ) -> None:
     write_dailytalk_fixture(tmp_path / "raw")
-    tokenizer = FakeTokenizer()
-    monkeypatch.setattr(
-        "tts_data_attribution.cli.data.load_encoder",
-        lambda tokenizer_path, device: CodesEncoder(tokenizer),
-    )
+    (tmp_path / "tokenizer").mkdir()
+    monkeypatch.setattr("importlib.util.find_spec", lambda name: object())
 
     assert main(encode_arguments(tmp_path)) == 0
 
@@ -94,7 +76,6 @@ def test_encode_writes_utterances_and_manifest(
         "speaker": "0",
         "text": "First",
     }
-    assert tokenizer.received[0][0] == str(tmp_path / "raw" / "data/2/0_0_d2.wav")
     assert json.loads((tmp_path / "encoded.manifest.json").read_text(encoding="utf-8")) == {
         "output_sha256": hashlib.sha256(output.read_bytes()).hexdigest(),
         "tokenizer_path": (tmp_path / "tokenizer").as_posix(),

@@ -4,14 +4,20 @@ Status: **implemented; intentionally small**
 
 ## Scope
 
-A dataset integration turns its source into `Utterance` values. `UtteranceDataset`
-stores them, implements the PyTorch dataset interface, and reads or writes JSONL.
-Encoding fills the `audio_codes` of every utterance and appends the result to the
-encoded JSONL that training later consumes.
+`UtteranceDataset` is the data ready for an experiment: a tuple of `Utterance`
+values behind the PyTorch dataset interface, read from and written to JSONL.
+A dataset×model class such as `DailyTalkQwen3TTSDataset` extends it with two
+duties: `load()` turns the raw source layout into utterances, and `encode()`
+fills their `audio_codes` with that model's tokenizer and appends the result to
+the encoded JSONL.
 
 ```text
-raw dataset → load_<dataset>() → UtteranceDataset → encode_utterances() → <dataset>_encoded.jsonl
+raw layout → DailyTalkQwen3TTSDataset(data_root) → .encode(...) → dailytalk_qwen3tts.jsonl
+                                                                          ↓
+                                                     UtteranceDataset.from_jsonl()  (experiments)
 ```
+
+A new dataset or model pairing is a new subclass; nothing existing changes.
 
 ## API
 
@@ -39,16 +45,12 @@ class UtteranceDataset(torch.utils.data.Dataset[Utterance]):
     def ids(self) -> set[str]: ...
 
 
-def load_dailytalk(root: str | Path) -> UtteranceDataset: ...
+class DailyTalkQwen3TTSDataset(UtteranceDataset):
+    def __init__(self, data_root: str | Path) -> None: ...
 
+    def load(self) -> list[Utterance]: ...
 
-def encode_utterances(
-    dataset: UtteranceDataset,
-    audio_root: Path,
-    encoder: Callable[[list[Path]], list[torch.Tensor]],
-    output: Path,
-    batch_size: int,
-) -> None: ...
+    def encode(self, tokenizer_path: Path, output: Path, device: str, batch_size: int) -> None: ...
 ```
 
 ## Utterance contract
@@ -69,21 +71,22 @@ One JSONL line per utterance, keys sorted, UTF-8 preserved:
 
 ## Encoding behavior
 
-`encode_utterances()` reads the IDs already present in the output, encodes only
-the missing utterances in batches, and appends one line per utterance after
-each batch. An interrupted run resumes by rerunning the same command. The
-encoder is any callable from audio paths to one `(frames, 16)` tensor per path;
-`CodesEncoder` in `models.qwen3_tts` wraps the pinned 12Hz tokenizer.
+`encode()` reads the IDs already present in `output`, encodes only the missing
+utterances in `DataLoader` batches of `batch_size`, and appends one line per
+utterance after each batch. An interrupted run resumes by rerunning the same
+command. The tokenizer is loaded lazily inside `encode()`, so constructing the
+dataset stays cheap. `CodesEncoder` in `models.qwen3_tts` wraps the pinned 12Hz
+tokenizer and returns one `(frames, 16)` tensor per audio path.
 
 There is no schema validator. `JSONDecodeError`, `TypeError`, and `OSError`
 propagate unchanged.
 
 ## DailyTalk
 
-`load_dailytalk()` reads the official `metadata.json`, orders dialogues and
-utterances numerically, and takes each transcript from the per-utterance text
-file next to the audio. Eight metadata transcripts differ from those files, so
-the text files win. Exact counts are recorded in `references/sources.yaml`.
+`load()` reads the official `metadata.json`, orders dialogues and utterances
+numerically, and takes each transcript from the per-utterance text file next to
+the audio. Eight metadata transcripts differ from those files, so the text files
+win. Exact counts are recorded in `references/sources.yaml`.
 
 ## Deliberately outside this interface
 

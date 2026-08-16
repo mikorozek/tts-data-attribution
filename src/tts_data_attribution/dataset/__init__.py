@@ -1,5 +1,4 @@
-from .dailytalk import load_dailytalk
-from .encoding import encode_utterances
+from .dailytalk_qwen3tts import DailyTalkQwen3TTSDataset
 from .utterance import Utterance, UtteranceDataset
 
-__all__ = ["Utterance", "UtteranceDataset", "encode_utterances", "load_dailytalk"]
+__all__ = ["DailyTalkQwen3TTSDataset", "Utterance", "UtteranceDataset"]

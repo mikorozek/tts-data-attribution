@@ -49,12 +49,12 @@ uv run --group qwen tda data encode dailytalk
 
 One invocation parses the source layout and encodes every utterance with the
 pinned 12Hz tokenizer. It writes complete utterance records to
-`data/processed/dailytalk_encoded.jsonl` and a manifest with its content hash.
+`data/processed/dailytalk_qwen3tts.jsonl` and a manifest with its content hash.
 The command validates the dataset layout and resumes after interruption by
 skipping already-encoded IDs.
 
-`load_dailytalk()` reads the per-utterance transcript files and keeps the
-speaker and dialogue of every utterance. The full command surface, including
+`DailyTalkQwen3TTSDataset` reads the per-utterance transcript files, keeps the
+speaker and dialogue of every utterance, and encodes them for Qwen3-TTS. The full command surface, including
 the planned experiment commands, is specified in
 [`docs/specs/cli.md`](docs/specs/cli.md).
 
@@ -67,7 +67,7 @@ utterances, implements `torch.utils.data.Dataset`, and reads or writes JSONL.
 ```python
 from tts_data_attribution.dataset import UtteranceDataset
 
-encoded = UtteranceDataset.from_jsonl("data/processed/dailytalk_encoded.jsonl")
+encoded = UtteranceDataset.from_jsonl("data/processed/dailytalk_qwen3tts.jsonl")
 encoded[0].audio_codes
 ```
 
