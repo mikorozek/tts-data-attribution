@@ -86,6 +86,7 @@ encoded[0].audio_codes
 ```
 
 The interface is specified in
-[`docs/specs/dataset-integration.md`](docs/specs/dataset-integration.md). Model
-loading, gradients, attribution, and evaluation will be added only when their
-behavior is implemented.
+[`docs/specs/dataset-integration.md`](docs/specs/dataset-integration.md). Qwen3-TTS
+batching, differentiable talker inputs, and the per-example codebook objective
+are implemented. LoRA training, attribution, and evaluation will be added only
+when their behavior is implemented.
