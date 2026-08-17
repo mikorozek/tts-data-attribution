@@ -1,4 +1,4 @@
-from .lora import apply_lora
+from .lora import apply_lora, save_lora_checkpoint
 
 
 def qwen3_tts_encoder() -> type:
@@ -9,4 +9,4 @@ def qwen3_tts_encoder() -> type:
 
 EXPERIMENT_ENCODERS = {"qwen3-tts": qwen3_tts_encoder}
 
-__all__ = ["EXPERIMENT_ENCODERS", "apply_lora"]
+__all__ = ["EXPERIMENT_ENCODERS", "apply_lora", "save_lora_checkpoint"]

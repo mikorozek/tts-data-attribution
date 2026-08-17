@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import json
 from functools import partial
+from pathlib import Path
 from types import SimpleNamespace
 
 import torch
-from peft import LoraConfig
+from peft import LoraConfig, PeftModel
 from qwen_tts.core.models.configuration_qwen3_tts import Qwen3TTSTalkerConfig
 from qwen_tts.core.models.modeling_qwen3_tts import (
     Qwen3TTSTalkerForConditionalGeneration,
@@ -14,7 +16,7 @@ from torch.optim import AdamW
 from torch.utils.data import DataLoader
 
 from tts_data_attribution.dataset import Utterance
-from tts_data_attribution.models import apply_lora
+from tts_data_attribution.models import apply_lora, save_lora_checkpoint
 from tts_data_attribution.models.qwen3_tts import (
     collate,
     evaluate,
@@ -150,7 +152,9 @@ def test_qwen_objective_backpropagates_only_through_talker_lora() -> None:
     )
 
 
-def test_train_processes_every_batch_and_evaluates_without_gradients() -> None:
+def test_train_processes_every_batch_and_evaluates_without_gradients(
+    tmp_path: Path,
+) -> None:
     torch.manual_seed(0)
     model = tiny_lora_model()
     speaker_embeddings = {"speaker-a": torch.randn(16)}
@@ -213,3 +217,60 @@ def test_train_processes_every_batch_and_evaluates_without_gradients() -> None:
         for name, parameter in model.named_parameters()
         if not parameter.requires_grad
     )
+
+    checkpoint = tmp_path / "checkpoint"
+    save_lora_checkpoint(
+        checkpoint,
+        model.talker,
+        optimizer,
+        epoch=2,
+        step=4,
+    )
+
+    adapter_parameters = {
+        name: parameter
+        for name, parameter in model.talker.named_parameters()
+        if parameter.requires_grad
+    }
+    metadata = json.loads((checkpoint / "metadata.json").read_text())
+    assert metadata["epoch"] == 2
+    assert metadata["step"] == 4
+    assert metadata["format_version"] == 1
+    assert metadata["parameter_groups"] == [list(adapter_parameters)]
+    assert [item["name"] for item in metadata["parameters"]] == list(adapter_parameters)
+
+    optimizer_state = torch.load(
+        checkpoint / "optimizer.pt", map_location="cpu", weights_only=True
+    )
+    assert len(optimizer_state["state"]) == len(adapter_parameters)
+
+    torch.manual_seed(0)
+    reloaded_model = TinyQwen3TTS()
+    reloaded_model.requires_grad_(False)
+    reloaded_model.talker = PeftModel.from_pretrained(
+        reloaded_model.talker,
+        checkpoint / "adapter",
+        is_trainable=True,
+    )
+    reloaded_parameters = {
+        name: parameter
+        for name, parameter in reloaded_model.talker.named_parameters()
+        if parameter.requires_grad
+    }
+    reloaded_optimizer = AdamW(reloaded_parameters.values(), lr=0.01)
+    reloaded_optimizer.load_state_dict(optimizer_state)
+
+    assert list(reloaded_parameters) == list(adapter_parameters)
+    for name, parameter in adapter_parameters.items():
+        torch.testing.assert_close(
+            reloaded_optimizer.state[reloaded_parameters[name]]["exp_avg_sq"],
+            optimizer.state[parameter]["exp_avg_sq"],
+        )
+
+    validation_batch = next(iter(validation_loader))
+    model.eval()
+    reloaded_model.eval()
+    with torch.no_grad():
+        original_losses = objective(model, validation_batch)
+        reloaded_losses = objective(reloaded_model, validation_batch)
+    torch.testing.assert_close(reloaded_losses, original_losses)
