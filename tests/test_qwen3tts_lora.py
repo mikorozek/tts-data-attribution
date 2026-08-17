@@ -16,7 +16,11 @@ from torch.optim import AdamW
 from torch.utils.data import DataLoader
 
 from tts_data_attribution.dataset import Utterance
-from tts_data_attribution.models import apply_lora, save_lora_checkpoint
+from tts_data_attribution.models import (
+    apply_lora,
+    collect_per_example_gradients,
+    save_lora_checkpoint,
+)
 from tts_data_attribution.models.qwen3_tts import (
     collate,
     evaluate,
@@ -115,7 +119,7 @@ def utterance(identifier: str, offset: int) -> Utterance:
     )
 
 
-def test_qwen_objective_backpropagates_only_through_talker_lora() -> None:
+def test_qwen_objective_produces_all_talker_lora_gradients() -> None:
     torch.manual_seed(0)
     model = tiny_lora_model()
     batch = collate(
@@ -124,7 +128,7 @@ def test_qwen_objective_backpropagates_only_through_talker_lora() -> None:
     )
 
     losses = objective(model, batch)
-    losses.mean().backward()
+    [gradients] = list(collect_per_example_gradients(model.talker, losses))
 
     trainable_parameters = {
         name: parameter
@@ -142,14 +146,18 @@ def test_qwen_objective_backpropagates_only_through_talker_lora() -> None:
     assert any(
         ".code_predictor.model.layers.0." in name for name in trainable_parameters
     )
+    adapter_parameters = {
+        name: parameter
+        for name, parameter in model.talker.named_parameters()
+        if parameter.requires_grad
+    }
+    assert list(gradients) == list(adapter_parameters)
     assert all(
-        parameter.grad is not None for parameter in trainable_parameters.values()
+        gradient.shape == adapter_parameters[name].shape
+        and torch.isfinite(gradient).all()
+        for name, gradient in gradients.items()
     )
-    assert all(
-        parameter.grad is None
-        for name, parameter in model.named_parameters()
-        if name not in trainable_parameters
-    )
+    assert all(parameter.grad is None for parameter in model.parameters())
 
 
 def test_train_processes_every_batch_and_evaluates_without_gradients(

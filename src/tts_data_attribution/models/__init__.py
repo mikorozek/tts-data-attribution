@@ -1,3 +1,4 @@
+from .gradients import collect_per_example_gradients
 from .lora import apply_lora, save_lora_checkpoint
 
 
@@ -9,4 +10,9 @@ def qwen3_tts_encoder() -> type:
 
 EXPERIMENT_ENCODERS = {"qwen3-tts": qwen3_tts_encoder}
 
-__all__ = ["EXPERIMENT_ENCODERS", "apply_lora", "save_lora_checkpoint"]
+__all__ = [
+    "EXPERIMENT_ENCODERS",
+    "apply_lora",
+    "collect_per_example_gradients",
+    "save_lora_checkpoint",
+]
