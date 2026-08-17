@@ -107,7 +107,7 @@ def workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
                 audio_path=f"data/{speaker}-{index}.wav",
             )
             for speaker in ("0", "1")
-            for index in range(6)
+            for index in range(8)
         ]
     )
     monkeypatch.setitem(DATASETS, "dailytalk", lambda root: dataset)
@@ -131,6 +131,10 @@ def init_arguments(root: Path, name: str = "study") -> list[str]:
         str(root / "raw"),
         "--training-pool-size",
         "8",
+        "--validation-pool-size",
+        "2",
+        "--query-pool-size",
+        "2",
         "--subset-count",
         "3",
         "--subset-size",
@@ -171,6 +175,8 @@ def test_init_only_writes_the_manifest_and_plan(workspace: Path) -> None:
         dataset="dailytalk",
         data_root=workspace / "raw",
         training_pool_size=8,
+        validation_pool_size=2,
+        query_pool_size=2,
         subset_count=3,
         subset_size=4,
         speaker_count=2,
@@ -193,7 +199,12 @@ def test_encode_writes_only_the_sampled_utterances_and_speakers(
 
     directory = workspace / "experiments/study"
     plan = Plan.from_json(directory / "plan.json")
-    selected_ids = set(plan.training_pool) | set(plan.references.values())
+    selected_ids = (
+        set(plan.training_pool)
+        | set(plan.validation_pool)
+        | set(plan.query_pool)
+        | set(plan.references.values())
+    )
     encoded = UtteranceDataset.from_jsonl(
         directory / "sampled_utterances_encoded.jsonl"
     )
@@ -348,6 +359,10 @@ def test_init_uses_dataset_specific_layout_validation(
                 str(data_root),
                 "--training-pool-size",
                 "2",
+                "--validation-pool-size",
+                "0",
+                "--query-pool-size",
+                "0",
                 "--subset-count",
                 "1",
                 "--subset-size",

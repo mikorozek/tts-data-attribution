@@ -13,7 +13,8 @@ experiment behavior remains importable outside the CLI.
 tda
 └── experiment
     ├── init    <name> --dataset <dataset> --data-root <dir>
-    │                  --training-pool-size N --subset-count N --subset-size N
+    │                  --training-pool-size N --validation-pool-size N
+    │                  --query-pool-size N --subset-count N --subset-size N
     │                  --speaker-count N --seed N [--root]
     ├── encode  <name> --model <model> --model-path <dir>
     │                  [--device] [--batch-size] [--root]
@@ -30,7 +31,7 @@ Validation completes before the experiment directory is created:
 
 - the named dataset must load from `--data-root`;
 - `speaker_count` must fit the available speakers;
-- `training_pool_size` must fit the non-reference utterances;
+- the requested pools must fit the eligible dialogue-disjoint utterances;
 - `subset_size` must not exceed `training_pool_size`;
 - the experiment directory must not already exist.
 
@@ -39,21 +40,24 @@ Validation completes before the experiment directory is created:
 ```yaml
 data_root: data/raw/dailytalk
 dataset: dailytalk
+query_pool_size: 100
 seed: 1234
 speaker_count: 2
 subset_count: 50
 subset_size: 1000
 training_pool_size: 2000
+validation_pool_size: 200
 ```
 
-`plan.json` records reference utterances, the training pool, and subsets. The
-same manifest produces the same byte-stable plan.
+`plan.json` records reference utterances, training, validation, and query
+pools, and subsets. These partitions are disjoint at dialogue level. The same
+manifest produces the same byte-stable plan.
 
 ## `tda experiment encode`
 
 `encode` is an explicit model-dependent materialization step. It reads the
-experiment plan and encodes the union of the training pool and reference
-utterances. It does not encode unsampled dataset records.
+experiment plan and encodes the union of the training, validation, and query
+pools and reference utterances. It does not encode unsampled dataset records.
 
 For Qwen3-TTS, one loaded `Qwen3TTSModel` provides:
 

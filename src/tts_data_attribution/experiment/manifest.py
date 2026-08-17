@@ -12,6 +12,8 @@ class ExperimentManifest:
     dataset: str
     data_root: Path
     training_pool_size: int
+    validation_pool_size: int
+    query_pool_size: int
     subset_count: int
     subset_size: int
     speaker_count: int
@@ -24,6 +26,8 @@ class ExperimentManifest:
             dataset=values["dataset"],
             data_root=Path(values["data_root"]),
             training_pool_size=values["training_pool_size"],
+            validation_pool_size=values["validation_pool_size"],
+            query_pool_size=values["query_pool_size"],
             subset_count=values["subset_count"],
             subset_size=values["subset_size"],
             speaker_count=values["speaker_count"],

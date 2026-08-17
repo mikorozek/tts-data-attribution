@@ -12,15 +12,17 @@ from tts_data_attribution.experiment import ExperimentManifest, Plan
 class SourceRecord:
     id: str
     speaker: str
+    dialogue: str
 
 
 def dataset(
-    per_speaker: int = 6, speakers: tuple[str, ...] = ("0", "1")
+    per_speaker: int = 12, speakers: tuple[str, ...] = ("0", "1")
 ) -> list[SourceRecord]:
     return [
         SourceRecord(
             id=f"{speaker}-{index}",
             speaker=speaker,
+            dialogue=str(index),
         )
         for speaker in speakers
         for index in range(per_speaker)
@@ -32,6 +34,8 @@ def manifest(**overrides: object) -> ExperimentManifest:
         dataset="dailytalk",
         data_root=Path("raw"),
         training_pool_size=8,
+        validation_pool_size=2,
+        query_pool_size=2,
         subset_count=3,
         subset_size=4,
         speaker_count=2,
@@ -46,6 +50,8 @@ def test_plan_has_the_requested_shape() -> None:
 
     assert sorted(plan.references) == ["0", "1"]
     assert len(plan.training_pool) == 8
+    assert len(plan.validation_pool) == 2
+    assert len(plan.query_pool) == 2
     assert len(plan.subsets) == 3
     assert all(len(subset) == 4 for subset in plan.subsets)
 
@@ -56,6 +62,21 @@ def test_references_are_one_per_speaker_and_never_in_the_pool() -> None:
     for speaker, reference in plan.references.items():
         assert reference.startswith(f"{speaker}-")
         assert reference not in plan.training_pool
+        assert reference not in plan.validation_pool
+        assert reference not in plan.query_pool
+
+
+def test_pools_and_references_are_dialogue_disjoint() -> None:
+    plan = Plan.sample(manifest(), dataset())
+    groups = [
+        {identifier.split("-")[1] for identifier in plan.references.values()},
+        {identifier.split("-")[1] for identifier in plan.training_pool},
+        {identifier.split("-")[1] for identifier in plan.validation_pool},
+        {identifier.split("-")[1] for identifier in plan.query_pool},
+    ]
+
+    for index, group in enumerate(groups):
+        assert all(group.isdisjoint(other) for other in groups[index + 1 :])
 
 
 def test_subsets_are_drawn_from_the_pool_without_repeats() -> None:
@@ -90,7 +111,9 @@ def test_another_seed_gives_another_plan() -> None:
     ("overrides", "message"),
     [
         ({"speaker_count": 3}, "speaker_count 3 exceeds the 2 speakers"),
-        ({"training_pool_size": 11}, "training_pool_size 11 exceeds the 10 candidate"),
+        ({"training_pool_size": 25}, "training_pool_size 25 exceeds"),
+        ({"validation_pool_size": 25}, "validation_pool_size 25 exceeds"),
+        ({"query_pool_size": 25}, "query_pool_size 25 exceeds"),
         ({"subset_size": 9}, "subset_size 9 exceeds training_pool_size 8"),
     ],
 )

@@ -17,11 +17,51 @@ class _SourceRecord(Protocol):
     @property
     def speaker(self) -> str: ...
 
+    @property
+    def dialogue(self) -> str: ...
+
+
+def _sample_dialogue_disjoint_pool(
+    rng: random.Random,
+    records: list[_SourceRecord],
+    size: int,
+    name: str,
+) -> tuple[list[str], set[str]]:
+    if size < 0:
+        raise ValueError(f"{name}_size must not be negative")
+    if size == 0:
+        return [], set()
+    by_dialogue: dict[str, list[str]] = {}
+    for record in records:
+        by_dialogue.setdefault(record.dialogue, []).append(record.id)
+    dialogues = sorted(by_dialogue)
+    rng.shuffle(dialogues)
+    selected_dialogues: set[str] = set()
+    candidate_count = 0
+    for dialogue in dialogues:
+        selected_dialogues.add(dialogue)
+        candidate_count += len(by_dialogue[dialogue])
+        if candidate_count >= size:
+            break
+    if candidate_count < size:
+        raise ValueError(
+            f"{name}_size {size} exceeds the {candidate_count} candidate "
+            "utterances available in dialogue-disjoint groups"
+        )
+    candidates = [
+        identifier
+        for dialogue in sorted(selected_dialogues)
+        for identifier in by_dialogue[dialogue]
+    ]
+    return sorted(rng.sample(candidates, size)), selected_dialogues
+
 
 @dataclass(frozen=True)
 class Plan:
     references: dict[str, str]
     training_pool: list[str]
+    validation_pool: list[str]
+    query_pool: list[str]
     subsets: list[list[str]]
 
     @classmethod
@@ -29,40 +69,78 @@ class Plan:
         cls, manifest: ExperimentManifest, dataset: Collection[_SourceRecord]
     ) -> Self:
         rng = random.Random(manifest.seed)
-        speakers = sorted({utterance.speaker for utterance in dataset})
+        records = sorted(dataset, key=lambda utterance: utterance.id)
+        speakers = sorted({utterance.speaker for utterance in records})
         if manifest.speaker_count > len(speakers):
             raise ValueError(
                 f"speaker_count {manifest.speaker_count} exceeds the {len(speakers)} "
                 "speakers in the dataset"
-            )
-        chosen_speakers = speakers[: manifest.speaker_count]
-        by_speaker = {
-            speaker: [u.id for u in dataset if u.speaker == speaker]
-            for speaker in chosen_speakers
-        }
-        references = {speaker: rng.choice(ids) for speaker, ids in by_speaker.items()}
-        candidates = [
-            utterance_id
-            for speaker in chosen_speakers
-            for utterance_id in by_speaker[speaker]
-            if utterance_id != references[speaker]
-        ]
-        if manifest.training_pool_size > len(candidates):
-            raise ValueError(
-                f"training_pool_size {manifest.training_pool_size} exceeds the "
-                f"{len(candidates)} candidate utterances"
             )
         if manifest.subset_size > manifest.training_pool_size:
             raise ValueError(
                 f"subset_size {manifest.subset_size} exceeds training_pool_size "
                 f"{manifest.training_pool_size}"
             )
-        training_pool = sorted(rng.sample(candidates, manifest.training_pool_size))
+        chosen_speakers = speakers[: manifest.speaker_count]
+        by_speaker = {
+            speaker: [u for u in records if u.speaker == speaker]
+            for speaker in chosen_speakers
+        }
+        chosen_references = {
+            speaker: rng.choice(utterances)
+            for speaker, utterances in by_speaker.items()
+        }
+        references = {
+            speaker: utterance.id for speaker, utterance in chosen_references.items()
+        }
+        reference_dialogues = {
+            utterance.dialogue for utterance in chosen_references.values()
+        }
+        candidates = [
+            utterance
+            for utterance in records
+            if utterance.speaker in chosen_speakers
+            and utterance.dialogue not in reference_dialogues
+        ]
+        validation_pool, validation_dialogues = _sample_dialogue_disjoint_pool(
+            rng,
+            candidates,
+            manifest.validation_pool_size,
+            "validation_pool",
+        )
+        candidates = [
+            utterance
+            for utterance in candidates
+            if utterance.dialogue not in validation_dialogues
+        ]
+        query_pool, query_dialogues = _sample_dialogue_disjoint_pool(
+            rng,
+            candidates,
+            manifest.query_pool_size,
+            "query_pool",
+        )
+        candidates = [
+            utterance
+            for utterance in candidates
+            if utterance.dialogue not in query_dialogues
+        ]
+        training_pool, _ = _sample_dialogue_disjoint_pool(
+            rng,
+            candidates,
+            manifest.training_pool_size,
+            "training_pool",
+        )
         subsets = [
             sorted(rng.sample(training_pool, manifest.subset_size))
             for _ in range(manifest.subset_count)
         ]
-        return cls(references=references, training_pool=training_pool, subsets=subsets)
+        return cls(
+            references=references,
+            training_pool=training_pool,
+            validation_pool=validation_pool,
+            query_pool=query_pool,
+            subsets=subsets,
+        )
 
     @classmethod
     def from_json(cls, path: str | Path) -> Self:

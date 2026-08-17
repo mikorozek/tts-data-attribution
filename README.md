@@ -47,7 +47,9 @@ dataset without loading a model:
 uv run tda experiment init voice-study-1 \
   --dataset dailytalk \
   --data-root data/raw/dailytalk \
-  --training-pool-size 2000 --subset-count 50 --subset-size 1000 \
+  --training-pool-size 2000 \
+  --validation-pool-size 200 --query-pool-size 100 \
+  --subset-count 50 --subset-size 1000 \
   --speaker-count 2 --seed 1234
 ```
 
