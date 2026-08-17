@@ -201,6 +201,8 @@ def test_train_processes_every_batch_and_evaluates_without_gradients(
     )
 
     assert len(history) == 2
+    assert [metrics["epoch"] for metrics in history] == [1, 2]
+    assert [metrics["step"] for metrics in history] == [2, 4]
     assert all(
         torch.isfinite(torch.tensor(value))
         for metrics in history
