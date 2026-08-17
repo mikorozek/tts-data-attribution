@@ -1596,6 +1596,28 @@ wheels = [
 ]
 
 [[package]]
+name = "peft"
+version = "0.20.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "accelerate" },
+    { name = "huggingface-hub" },
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
+    { name = "numpy", version = "2.5.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "packaging" },
+    { name = "psutil" },
+    { name = "pyyaml" },
+    { name = "safetensors" },
+    { name = "torch" },
+    { name = "tqdm" },
+    { name = "transformers" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/b4/08/02541a2c29be7c78698f73d438bc0e733b214f3f35ec5db79fca8da8fc61/peft-0.20.0.tar.gz", hash = "sha256:4769c8093a4ca145fd6fb3fd4dd50449675f5fe46434ad1e98b285a132d4b1d0", size = 880503, upload-time = "2026-07-28T13:46:01.85Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/28/79/13bcabb8048126422d5c4b880575d40886c726f354db88cfeed4325525bb/peft-0.20.0-py3-none-any.whl", hash = "sha256:0fbba16ffebfad3de96e06f2da6860fd860292324b85b6141909fa1e26ea9233", size = 775777, upload-time = "2026-07-28T13:45:59.809Z" },
+]
+
+[[package]]
 name = "pillow"
 version = "12.3.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2680,6 +2702,7 @@ source = { editable = "." }
 dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "numpy", version = "2.5.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "peft" },
     { name = "pyyaml" },
     { name = "qwen-tts" },
     { name = "torch" },
@@ -2693,6 +2716,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "numpy", specifier = ">=1.26" },
+    { name = "peft", specifier = ">=0.20.0" },
     { name = "pyyaml", specifier = ">=6" },
     { name = "qwen-tts", editable = "third_party/Qwen3-TTS" },
     { name = "torch", specifier = ">=2.0" },

@@ -33,10 +33,12 @@ def build_input_embeddings(
         device=device,
     )
     attention_mask = torch.zeros(
+        (batch_size, max_sequence_length), dtype=torch.long, device=device
+    )
+    codec_embedding_mask = torch.zeros(
         (batch_size, max_sequence_length), dtype=torch.bool, device=device
     )
-    codec_embedding_mask = torch.zeros_like(attention_mask)
-    audio_embedding_mask = torch.zeros_like(attention_mask)
+    audio_embedding_mask = torch.zeros_like(codec_embedding_mask)
 
     for index in range(batch_size):
         text_length = int(text_lengths[index].item())

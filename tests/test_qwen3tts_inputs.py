@@ -94,8 +94,8 @@ def test_build_input_embeddings_builds_and_pads_qwen_sequences() -> None:
         [70, 80, 90, 330, 331, 332, 208, 343, 353, 334, 340, 335, 0, 0],
     ]
     assert inputs["attention_mask"].tolist() == [
-        [True] * 14,
-        [True] * 12 + [False, False],
+        [1] * 14,
+        [1] * 12 + [0, 0],
     ]
 
     inputs["inputs_embeds"].sum().backward()
