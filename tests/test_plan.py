@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import random
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
@@ -7,6 +8,7 @@ from typing import Any
 import pytest
 
 from tts_data_attribution.experiment import ExperimentManifest, Plan
+from tts_data_attribution.experiment.plan import _sample_dialogue_disjoint_pool
 
 
 @dataclass(frozen=True)
@@ -28,6 +30,24 @@ def dataset(
         for speaker in speakers
         for index in range(per_speaker)
     ]
+
+
+def test_pool_reserves_only_dialogues_with_selected_examples() -> None:
+    records = [SourceRecord(id="a", speaker="0", dialogue="d0")] + [
+        SourceRecord(id=f"b-{index}", speaker="0", dialogue="d1") for index in range(10)
+    ]
+
+    selected_ids, selected_dialogues = _sample_dialogue_disjoint_pool(
+        random.Random(5),
+        records,
+        2,
+        "pool",
+    )
+    dialogues_by_id = {record.id: record.dialogue for record in records}
+
+    assert selected_dialogues == {
+        dialogues_by_id[identifier] for identifier in selected_ids
+    }
 
 
 def manifest(**overrides: object) -> ExperimentManifest:

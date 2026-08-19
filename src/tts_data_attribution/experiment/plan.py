@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import random
-from collections.abc import Collection
+from collections.abc import Collection, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Protocol, Self
@@ -23,37 +23,21 @@ class _SourceRecord(Protocol):
 
 def _sample_dialogue_disjoint_pool(
     rng: random.Random,
-    records: list[_SourceRecord],
+    records: Sequence[_SourceRecord],
     size: int,
     name: str,
 ) -> tuple[list[str], set[str]]:
     if size < 0:
         raise ValueError(f"{name}_size must not be negative")
-    if size == 0:
-        return [], set()
-    by_dialogue: dict[str, list[str]] = {}
-    for record in records:
-        by_dialogue.setdefault(record.dialogue, []).append(record.id)
-    dialogues = sorted(by_dialogue)
-    rng.shuffle(dialogues)
-    selected_dialogues: set[str] = set()
-    candidate_count = 0
-    for dialogue in dialogues:
-        selected_dialogues.add(dialogue)
-        candidate_count += len(by_dialogue[dialogue])
-        if candidate_count >= size:
-            break
-    if candidate_count < size:
+    if size > len(records):
         raise ValueError(
-            f"{name}_size {size} exceeds the {candidate_count} candidate "
-            "utterances available in dialogue-disjoint groups"
+            f"{name}_size {size} exceeds the {len(records)} candidate utterances"
         )
-    candidates = [
-        identifier
-        for dialogue in sorted(selected_dialogues)
-        for identifier in by_dialogue[dialogue]
-    ]
-    return sorted(rng.sample(candidates, size)), selected_dialogues
+    selected = rng.sample(records, size)
+    return (
+        sorted(record.id for record in selected),
+        {record.dialogue for record in selected},
+    )
 
 
 @dataclass(frozen=True)
