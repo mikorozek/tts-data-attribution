@@ -40,34 +40,33 @@ sizes and checksums recorded in [`references/sources.yaml`](references/sources.y
 
 ## CLI
 
-The package installs the `tda` command. First sample an experiment from a raw
-dataset without loading a model:
+The package installs the `tda` command. First define the dataset and base model
+without loading the model:
 
 ```bash
 uv run tda experiment init voice-study-1 \
   --dataset dailytalk \
   --data-root data/raw/dailytalk \
-  --training-pool-size 2000 \
-  --validation-pool-size 200 --query-pool-size 100 \
+  --model qwen3-tts \
+  --model-path artifacts/models/Qwen3-TTS-12Hz-1.7B-Base-fd4b254 \
+  --training-pool-size 2000 --validation-pool-size 200 \
   --subset-count 50 --subset-size 1000 \
   --speaker-count 2 --seed 1234
 ```
 
-This writes `manifest.yaml` and the deterministic `plan.json`. Encode exactly
-the sampled utterances in a separate, explicit step:
+This writes `manifest.yaml` and the deterministic `plan.json`. Encode the
+training and validation utterances in a separate, explicit step:
 
 ```bash
 uv run tda experiment encode voice-study-1 \
-  --model qwen3-tts \
-  --model-path artifacts/models/Qwen3-TTS-12Hz-1.7B-Base-fd4b254 \
   --device cuda:0 --batch-size 16
 ```
 
-One Qwen model supplies the text processor, bundled 12 Hz speech tokenizer,
-and speaker encoder. The command writes
-`sampled_utterances_encoded.jsonl`, `speaker_embeddings.pt`, and
-`encoding.yaml` inside the experiment directory. It appends complete batches
-and skips already encoded IDs when resumed.
+The Qwen model recorded in the manifest supplies the text processor, bundled
+12 Hz speech tokenizer, and speaker encoder. The command writes
+`sampled_utterances_encoded.jsonl` for the training and validation pools and
+`speaker_embeddings.pt` for the reference utterances. It appends complete
+batches and skips already encoded IDs when resumed.
 
 ## Dataset API
 

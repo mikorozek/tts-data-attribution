@@ -24,9 +24,12 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     init_parser.add_argument("name")
     init_parser.add_argument("--dataset", choices=sorted(DATASETS), required=True)
     init_parser.add_argument("--data-root", type=Path, required=True)
+    init_parser.add_argument(
+        "--model", choices=sorted(EXPERIMENT_ENCODERS), required=True
+    )
+    init_parser.add_argument("--model-path", type=Path, required=True)
     init_parser.add_argument("--training-pool-size", type=int, required=True)
     init_parser.add_argument("--validation-pool-size", type=int, required=True)
-    init_parser.add_argument("--query-pool-size", type=int, required=True)
     init_parser.add_argument("--subset-count", type=int, required=True)
     init_parser.add_argument("--subset-size", type=int, required=True)
     init_parser.add_argument("--speaker-count", type=int, required=True)
@@ -38,10 +41,6 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         "encode", help="encode the utterances sampled for an experiment"
     )
     encode_parser.add_argument("name")
-    encode_parser.add_argument(
-        "--model", choices=sorted(EXPERIMENT_ENCODERS), required=True
-    )
-    encode_parser.add_argument("--model-path", type=Path, required=True)
     encode_parser.add_argument("--device", default="cuda:0")
     encode_parser.add_argument("--batch-size", type=int, default=16)
     encode_parser.add_argument("--root", type=Path, default=Path("experiments"))
@@ -56,9 +55,10 @@ def run_init(arguments: argparse.Namespace) -> None:
     manifest = ExperimentManifest(
         dataset=arguments.dataset,
         data_root=arguments.data_root,
+        model=arguments.model,
+        model_path=arguments.model_path,
         training_pool_size=arguments.training_pool_size,
         validation_pool_size=arguments.validation_pool_size,
-        query_pool_size=arguments.query_pool_size,
         subset_count=arguments.subset_count,
         subset_size=arguments.subset_size,
         speaker_count=arguments.speaker_count,
@@ -98,36 +98,14 @@ def run_encode(arguments: argparse.Namespace) -> None:
             f"cannot read experiment {arguments.name}: {error}"
         ) from error
     dataset = load_dataset(manifest)
-    selected_ids = (
-        plan.training_pool
-        + plan.validation_pool
-        + plan.query_pool
-        + list(plan.references.values())
-    )
+    selected_ids = plan.training_pool + plan.validation_pool
+    required_ids = selected_ids + list(plan.references.values())
     try:
-        dataset.get_records_by_ids(selected_ids)
+        dataset.get_records_by_ids(required_ids)
     except KeyError as error:
         raise CommandError(
             f"sampled utterance missing from dataset: {error}"
         ) from error
-
-    encoding_path = directory / "encoding.yaml"
-    encoding = {
-        "model": arguments.model,
-        "model_path": arguments.model_path.as_posix(),
-    }
-    if encoding_path.is_file():
-        try:
-            existing_encoding = yaml.safe_load(
-                encoding_path.read_text(encoding="utf-8")
-            )
-        except yaml.YAMLError as error:
-            raise CommandError(f"cannot read {encoding_path}: {error}") from error
-        if existing_encoding != encoding:
-            raise CommandError(
-                f"experiment {arguments.name} was already encoded with "
-                f"{existing_encoding}"
-            )
 
     output = directory / "sampled_utterances_encoded.jsonl"
     try:
@@ -155,14 +133,12 @@ def run_encode(arguments: argparse.Namespace) -> None:
         return
 
     try:
-        encoder_type = EXPERIMENT_ENCODERS[arguments.model]()
-        encoder = encoder_type.from_pretrained(arguments.model_path, arguments.device)
+        encoder_type = EXPERIMENT_ENCODERS[manifest.model]()
+        encoder = encoder_type.from_pretrained(manifest.model_path, arguments.device)
     except (OSError, TypeError, ValueError) as error:
         raise CommandError(
-            f"cannot load {arguments.model} from {arguments.model_path}: {error}"
+            f"cannot load {manifest.model} from {manifest.model_path}: {error}"
         ) from error
-
-    encoding_path.write_text(yaml.safe_dump(encoding, sort_keys=True), encoding="utf-8")
 
     completed = 0
     for batch in DataLoader(

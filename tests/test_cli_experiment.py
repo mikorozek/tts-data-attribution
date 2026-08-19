@@ -5,7 +5,6 @@ from pathlib import Path
 
 import pytest
 import torch
-import yaml
 
 from tts_data_attribution.cli.experiment import load_dataset
 from tts_data_attribution.cli.main import main
@@ -129,11 +128,13 @@ def init_arguments(root: Path, name: str = "study") -> list[str]:
         "dailytalk",
         "--data-root",
         str(root / "raw"),
+        "--model",
+        "qwen3-tts",
+        "--model-path",
+        str(root / "model"),
         "--training-pool-size",
         "8",
         "--validation-pool-size",
-        "2",
-        "--query-pool-size",
         "2",
         "--subset-count",
         "3",
@@ -153,10 +154,6 @@ def encode_arguments(root: Path, name: str = "study") -> list[str]:
         "experiment",
         "encode",
         name,
-        "--model",
-        "qwen3-tts",
-        "--model-path",
-        str(root / "model"),
         "--device",
         "cpu",
         "--batch-size",
@@ -174,9 +171,10 @@ def test_init_only_writes_the_manifest_and_plan(workspace: Path) -> None:
     assert manifest == ExperimentManifest(
         dataset="dailytalk",
         data_root=workspace / "raw",
+        model="qwen3-tts",
+        model_path=workspace / "model",
         training_pool_size=8,
         validation_pool_size=2,
-        query_pool_size=2,
         subset_count=3,
         subset_size=4,
         speaker_count=2,
@@ -199,12 +197,7 @@ def test_encode_writes_only_the_sampled_utterances_and_speakers(
 
     directory = workspace / "experiments/study"
     plan = Plan.from_json(directory / "plan.json")
-    selected_ids = (
-        set(plan.training_pool)
-        | set(plan.validation_pool)
-        | set(plan.query_pool)
-        | set(plan.references.values())
-    )
+    selected_ids = set(plan.training_pool) | set(plan.validation_pool)
     encoded = UtteranceDataset.from_jsonl(
         directory / "sampled_utterances_encoded.jsonl"
     )
@@ -231,10 +224,6 @@ def test_encode_writes_only_the_sampled_utterances_and_speakers(
         "0",
         "1",
     ]
-    assert yaml.safe_load((directory / "encoding.yaml").read_text()) == {
-        "model": "qwen3-tts",
-        "model_path": (workspace / "model").as_posix(),
-    }
 
 
 def test_encode_resumes_without_loading_the_model_again(workspace: Path) -> None:
@@ -280,7 +269,6 @@ def test_model_load_failure_leaves_no_encoding_artifacts(
     assert main(encode_arguments(workspace)) == 1
 
     assert "cannot load qwen3-tts" in capsys.readouterr().err
-    assert not (directory / "encoding.yaml").exists()
     assert not (directory / "sampled_utterances_encoded.jsonl").exists()
     assert not (directory / "speaker_embeddings.pt").exists()
 
@@ -357,11 +345,13 @@ def test_init_uses_dataset_specific_layout_validation(
                 "custom",
                 "--data-root",
                 str(data_root),
+                "--model",
+                "qwen3-tts",
+                "--model-path",
+                str(tmp_path / "model"),
                 "--training-pool-size",
                 "2",
                 "--validation-pool-size",
-                "0",
-                "--query-pool-size",
                 "0",
                 "--subset-count",
                 "1",
@@ -377,18 +367,3 @@ def test_init_uses_dataset_specific_layout_validation(
         )
         == 0
     )
-
-
-def test_encode_rejects_a_different_recorded_model(
-    workspace: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    assert main(init_arguments(workspace)) == 0
-    directory = workspace / "experiments/study"
-    (directory / "encoding.yaml").write_text(
-        "model: qwen3-tts\nmodel_path: another-model\n", encoding="utf-8"
-    )
-
-    assert main(encode_arguments(workspace)) == 1
-
-    assert "already encoded with" in capsys.readouterr().err
-    assert FakeExperimentEncoder.loaded == []

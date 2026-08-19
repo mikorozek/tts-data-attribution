@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -30,12 +31,13 @@ def dataset(
 
 
 def manifest(**overrides: object) -> ExperimentManifest:
-    values = dict(
+    values: dict[str, Any] = dict(
         dataset="dailytalk",
         data_root=Path("raw"),
+        model="qwen3-tts",
+        model_path=Path("model"),
         training_pool_size=8,
         validation_pool_size=2,
-        query_pool_size=2,
         subset_count=3,
         subset_size=4,
         speaker_count=2,
@@ -51,7 +53,6 @@ def test_plan_has_the_requested_shape() -> None:
     assert sorted(plan.references) == ["0", "1"]
     assert len(plan.training_pool) == 8
     assert len(plan.validation_pool) == 2
-    assert len(plan.query_pool) == 2
     assert len(plan.subsets) == 3
     assert all(len(subset) == 4 for subset in plan.subsets)
 
@@ -63,7 +64,6 @@ def test_references_are_one_per_speaker_and_never_in_the_pool() -> None:
         assert reference.startswith(f"{speaker}-")
         assert reference not in plan.training_pool
         assert reference not in plan.validation_pool
-        assert reference not in plan.query_pool
 
 
 def test_pools_and_references_are_dialogue_disjoint() -> None:
@@ -72,7 +72,6 @@ def test_pools_and_references_are_dialogue_disjoint() -> None:
         {identifier.split("-")[1] for identifier in plan.references.values()},
         {identifier.split("-")[1] for identifier in plan.training_pool},
         {identifier.split("-")[1] for identifier in plan.validation_pool},
-        {identifier.split("-")[1] for identifier in plan.query_pool},
     ]
 
     for index, group in enumerate(groups):
@@ -113,7 +112,6 @@ def test_another_seed_gives_another_plan() -> None:
         ({"speaker_count": 3}, "speaker_count 3 exceeds the 2 speakers"),
         ({"training_pool_size": 25}, "training_pool_size 25 exceeds"),
         ({"validation_pool_size": 25}, "validation_pool_size 25 exceeds"),
-        ({"query_pool_size": 25}, "query_pool_size 25 exceeds"),
         ({"subset_size": 9}, "subset_size 9 exceeds training_pool_size 8"),
     ],
 )

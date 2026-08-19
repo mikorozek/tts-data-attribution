@@ -16,11 +16,13 @@ def test_parser_maps_experiment_commands() -> None:
             "dailytalk",
             "--data-root",
             "raw",
+            "--model",
+            "qwen3-tts",
+            "--model-path",
+            "model",
             "--training-pool-size",
             "8",
             "--validation-pool-size",
-            "2",
-            "--query-pool-size",
             "2",
             "--subset-count",
             "3",
@@ -32,23 +34,14 @@ def test_parser_maps_experiment_commands() -> None:
             "7",
         ]
     )
-    encode = build_parser().parse_args(
-        [
-            "experiment",
-            "encode",
-            "study",
-            "--model",
-            "qwen3-tts",
-            "--model-path",
-            "model",
-        ]
-    )
+    encode = build_parser().parse_args(["experiment", "encode", "study"])
 
     assert init.run is run_init
     assert init.data_root == Path("raw")
-    assert not hasattr(init, "model")
-    assert not hasattr(init, "model_path")
+    assert init.model == "qwen3-tts"
+    assert init.model_path == Path("model")
     assert not hasattr(init, "device")
     assert encode.run is run_encode
-    assert encode.model_path == Path("model")
     assert encode.batch_size == 16
+    assert not hasattr(encode, "model")
+    assert not hasattr(encode, "model_path")

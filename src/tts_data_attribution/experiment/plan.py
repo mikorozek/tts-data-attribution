@@ -61,7 +61,6 @@ class Plan:
     references: dict[str, str]
     training_pool: list[str]
     validation_pool: list[str]
-    query_pool: list[str]
     subsets: list[list[str]]
 
     @classmethod
@@ -113,17 +112,6 @@ class Plan:
             for utterance in candidates
             if utterance.dialogue not in validation_dialogues
         ]
-        query_pool, query_dialogues = _sample_dialogue_disjoint_pool(
-            rng,
-            candidates,
-            manifest.query_pool_size,
-            "query_pool",
-        )
-        candidates = [
-            utterance
-            for utterance in candidates
-            if utterance.dialogue not in query_dialogues
-        ]
         training_pool, _ = _sample_dialogue_disjoint_pool(
             rng,
             candidates,
@@ -138,7 +126,6 @@ class Plan:
             references=references,
             training_pool=training_pool,
             validation_pool=validation_pool,
-            query_pool=query_pool,
             subsets=subsets,
         )
 

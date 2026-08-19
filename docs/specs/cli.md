@@ -1,11 +1,6 @@
 # CLI
 
-Status: **`tda experiment init` and `tda experiment encode` implemented; training and status commands planned**
-
-## Scope
-
-The `tda` command is the user-facing composition layer. Dataset, encoding, and
-experiment behavior remains importable outside the CLI.
+Status: **`tda experiment init` and `tda experiment encode` implemented; training and query commands planned**
 
 ## Command tree
 
@@ -13,19 +8,18 @@ experiment behavior remains importable outside the CLI.
 tda
 └── experiment
     ├── init    <name> --dataset <dataset> --data-root <dir>
+    │                  --model <model> --model-path <dir>
     │                  --training-pool-size N --validation-pool-size N
-    │                  --query-pool-size N --subset-count N --subset-size N
+    │                  --subset-count N --subset-size N
     │                  --speaker-count N --seed N [--root]
-    ├── encode  <name> --model <model> --model-path <dir>
-    │                  [--device] [--batch-size] [--root]
-    ├── train   <name>                                           (planned)
-    └── status  <name>                                           (planned)
+    ├── encode  <name> [--device] [--batch-size] [--root]
+    └── train   <name>                                           (planned)
 ```
 
 ## `tda experiment init`
 
-`init` loads a raw dataset, samples the experiment, and writes no model-derived
-data. It never loads a model or requires a GPU.
+`init` records a raw dataset and base model, samples the training experiment,
+and writes no model-derived data. It does not load the model or require a GPU.
 
 Validation completes before the experiment directory is created:
 
@@ -35,12 +29,13 @@ Validation completes before the experiment directory is created:
 - `subset_size` must not exceed `training_pool_size`;
 - the experiment directory must not already exist.
 
-`manifest.yaml` records the dataset and sampling request:
+`manifest.yaml` records the dataset, base model, and sampling request:
 
 ```yaml
 data_root: data/raw/dailytalk
 dataset: dailytalk
-query_pool_size: 100
+model: qwen3-tts
+model_path: artifacts/models/Qwen3-TTS-12Hz-1.7B-Base-fd4b254
 seed: 1234
 speaker_count: 2
 subset_count: 50
@@ -49,19 +44,17 @@ training_pool_size: 2000
 validation_pool_size: 200
 ```
 
-`plan.json` records reference utterances, training, validation, and query
-pools, and subsets. These partitions are disjoint at dialogue level. The same
-manifest produces the same byte-stable plan.
+`plan.json` records reference utterances, training and validation pools, and
+training subsets. These selections are disjoint at dialogue level. The same
+manifest produces the same byte-stable plan. Query sets are sampled later and
+are not part of the initial plan.
 
 ## `tda experiment encode`
 
-`encode` is an explicit model-dependent materialization step. It reads the
-experiment plan and encodes the union of the training, validation, and query
-pools and reference utterances. It does not encode unsampled dataset records.
+`encode` reads the base model from the immutable experiment manifest. For
+Qwen3-TTS, one loaded `Qwen3TTSModel` provides:
 
-For Qwen3-TTS, one loaded `Qwen3TTSModel` provides:
-
-- `processor` for `<|im_start|>assistant\n{text}` text IDs;
+- the processor for `<|im_start|>assistant\n{text}` text IDs;
 - the bundled speech tokenizer for 16-codebook audio codes;
 - the speaker encoder for one vector per planned speaker reference.
 
@@ -71,25 +64,23 @@ The command writes:
 experiments/<name>/
 ├── manifest.yaml
 ├── plan.json
-├── encoding.yaml
 ├── sampled_utterances_encoded.jsonl
 └── speaker_embeddings.pt
 ```
 
-`sampled_utterances_encoded.jsonl` contains `id`, `speaker`, `dialogue`,
-`text_ids`, and `audio_codes`. It intentionally omits raw text and audio paths.
-`encoding.yaml` records the model name and path used for the materialization.
+`sampled_utterances_encoded.jsonl` contains only training and validation
+utterances. Reference audio is converted only into entries in
+`speaker_embeddings.pt`; reference utterances are not materialized as text and
+codec-token records.
 
-Encoding appends only complete batches. A repeated invocation with the same
-model skips encoded IDs and already stored speaker embeddings; an invocation
-with a different recorded model is rejected.
+Encoding appends only complete batches. A repeated invocation skips encoded IDs
+and already stored speaker embeddings.
 
 ## Shared rules
 
 - Errors go to stderr with exit code 1; argument misuse uses argparse errors.
 - Experiment workspaces are local and never tracked.
 - Dataset integrations own validation of their source layouts.
-- A model contributes one focused experiment encoder and one entry in
-  `models.EXPERIMENT_ENCODERS`.
-- Training, attribution, and evaluation commands consume the immutable plan
-  and encoded experiment data rather than resampling or re-encoding it.
+- Model-derived commands consume the model recorded in `manifest.yaml`.
+- Training, attribution, and evaluation commands consume persisted plans and
+  encoded data rather than resampling them implicitly.
