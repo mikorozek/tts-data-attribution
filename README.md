@@ -68,6 +68,19 @@ The Qwen model recorded in the manifest supplies the text processor, bundled
 `speaker_embeddings.pt` for the reference utterances. It appends complete
 batches and skips already encoded IDs when resumed.
 
+Configure the immutable training recipe separately:
+
+```bash
+uv run tda training configure voice-study-1 \
+  --lora-rank 8 --lora-alpha 16 \
+  --learning-rate 2e-5 --epochs 3 --batch-size 1 --seed 5678
+```
+
+This writes `training.yaml` inside the experiment directory and refuses to
+overwrite an existing recipe. Alternatively, copy
+[`training.example.yaml`](training.example.yaml) into the experiment directory
+and edit it using the same validated schema.
+
 ## Dataset API
 
 `DailyTalkDataset` transiently exposes raw source records for sampling and

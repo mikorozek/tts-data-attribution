@@ -1,19 +1,23 @@
 # CLI
 
-Status: **`tda experiment init` and `tda experiment encode` implemented; training and query commands planned**
+Status: **experiment initialization, encoding, and training configuration implemented; training execution and query commands planned**
 
 ## Command tree
 
 ```text
 tda
-└── experiment
-    ├── init    <name> --dataset <dataset> --data-root <dir>
-    │                  --model <model> --model-path <dir>
-    │                  --training-pool-size N --validation-pool-size N
-    │                  --subset-count N --subset-size N
-    │                  --speaker-count N --seed N [--root]
-    ├── encode  <name> [--device] [--batch-size] [--root]
-    └── train   <name>                                           (planned)
+├── experiment
+│   ├── init    <name> --dataset <dataset> --data-root <dir>
+│   │                  --model <model> --model-path <dir>
+│   │                  --training-pool-size N --validation-pool-size N
+│   │                  --subset-count N --subset-size N
+│   │                  --speaker-count N --seed N [--root]
+│   └── encode  <name> [--device] [--batch-size] [--root]
+└── training
+    ├── configure <experiment> --lora-rank N --lora-alpha N
+    │                        --learning-rate R --epochs N
+    │                        --batch-size N --seed N [options]
+    └── start     <experiment>                                  (planned)
 ```
 
 ## `tda experiment init`
@@ -75,6 +79,22 @@ codec-token records.
 
 Encoding appends only complete batches. A repeated invocation skips encoded IDs
 and already stored speaker embeddings.
+
+## `tda training configure`
+
+`configure` writes one immutable training recipe shared by the full-training
+checkpoint and every subset checkpoint. It requires an initialized experiment
+and refuses to overwrite an existing `training.yaml`. The command records all
+resolved defaults as well as explicitly provided values.
+
+A project-level [`training.example.yaml`](../../training.example.yaml) uses the
+same strict schema. It may be copied manually to
+`experiments/<name>/training.yaml`; future training commands validate manually
+created files before loading a model.
+
+The initial implementation fixes AdamW, Qwen LoRA target modules, the training
+objective, and final-checkpoint-only serialization. These are not exposed as
+configuration switches until an experiment requires alternatives.
 
 ## Shared rules
 
