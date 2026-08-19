@@ -22,7 +22,7 @@ def utterance(identifier: str) -> Utterance:
 
 def test_utterance_is_frozen() -> None:
     with pytest.raises(FrozenInstanceError):
-        utterance("2-0").id = "changed"
+        setattr(utterance("2-0"), "id", "changed")
 
 
 def test_dataset_has_a_stable_jsonl_round_trip(tmp_path: Path) -> None:
@@ -74,3 +74,36 @@ def test_malformed_json_raises_json_decode_error(tmp_path: Path) -> None:
 
     with pytest.raises(json.JSONDecodeError):
         UtteranceDataset.from_jsonl(path)
+
+
+def test_utterance_dataset_gets_utterances_in_requested_id_order() -> None:
+    first = Utterance(
+        id="first",
+        speaker="speaker",
+        dialogue="dialogue-1",
+        text_ids=[1],
+        audio_codes=[[2] * 16],
+    )
+    second = Utterance(
+        id="second",
+        speaker="speaker",
+        dialogue="dialogue-2",
+        text_ids=[3],
+        audio_codes=[[4] * 16],
+    )
+    dataset = UtteranceDataset([first, second])
+
+    assert dataset.get_utterances_by_ids(["second", "first"]) == [second, first]
+
+
+def test_utterance_dataset_rejects_duplicate_ids() -> None:
+    utterance = Utterance(
+        id="duplicate",
+        speaker="speaker",
+        dialogue="dialogue",
+        text_ids=[1],
+        audio_codes=[[2] * 16],
+    )
+
+    with pytest.raises(ValueError, match="utterance IDs must be unique"):
+        UtteranceDataset([utterance, utterance])

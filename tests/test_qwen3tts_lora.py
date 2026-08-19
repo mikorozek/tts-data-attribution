@@ -22,14 +22,14 @@ from tts_data_attribution.models import (
     attribution_scores,
     collect_per_example_gradients,
     correct_gradients_with_adamw,
+    evaluate,
     save_lora_checkpoint,
+    train,
 )
 from tts_data_attribution.models.qwen3_tts import (
     Qwen3TTSGradientProjector,
     collate,
-    evaluate,
     objective,
-    train,
 )
 
 
@@ -240,20 +240,24 @@ def test_train_processes_every_batch_and_evaluates_without_gradients(
     optimizer = AdamW(trainable_parameters.values(), lr=0.01)
 
     model.zero_grad(set_to_none=True)
-    validation_loss = evaluate(model, validation_loader, "cpu")
+    validation_loss = evaluate(model, validation_loader, objective, "cpu")
 
     assert torch.isfinite(torch.tensor(validation_loss))
     assert all(parameter.grad is None for parameter in model.parameters())
 
+    reported_metrics: list[dict[str, int | float]] = []
     history = train(
         model,
         training_loader,
         validation_loader,
         optimizer,
+        objective,
         epochs=2,
         device="cpu",
+        epoch_callback=reported_metrics.append,
     )
 
+    assert reported_metrics == history
     assert len(history) == 2
     assert [metrics["epoch"] for metrics in history] == [1, 2]
     assert [metrics["step"] for metrics in history] == [2, 4]

@@ -1,6 +1,6 @@
 # CLI
 
-Status: **experiment initialization, encoding, and training configuration implemented; training execution and query commands planned**
+Status: **experiment initialization, encoding, and training implemented; query commands planned**
 
 ## Command tree
 
@@ -17,7 +17,9 @@ tda
     ├── configure <experiment> --lora-rank N --lora-alpha N
     │                        --learning-rate R --epochs N
     │                        --batch-size N --seed N [options]
-    └── start     <experiment>                                  (planned)
+    └── start     <experiment>
+                  (--training-pool | --subset ID | --all-training-sets)
+                  [--device]
 ```
 
 ## `tda experiment init`
@@ -82,7 +84,7 @@ and already stored speaker embeddings.
 
 ## `tda training configure`
 
-`configure` writes one immutable training recipe shared by the full-training
+`configure` writes one immutable training recipe shared by the training-pool
 checkpoint and every subset checkpoint. It requires an initialized experiment
 and refuses to overwrite an existing `training.yaml`. The command records all
 resolved defaults as well as explicitly provided values.
@@ -95,6 +97,36 @@ created files before loading a model.
 The initial implementation fixes AdamW, Qwen LoRA target modules, the training
 objective, and final-checkpoint-only serialization. These are not exposed as
 configuration switches until an experiment requires alternatives.
+
+## `tda training start`
+
+`start` requires exactly one data-selection mode:
+
+```text
+--training-pool       train one checkpoint on plan.training_pool
+--subset ID           train one checkpoint on the named subset
+--all-training-sets   train the training pool and every named subset
+```
+
+Subset names are stable keys such as `subset-0007` in `plan.json`. Checkpoints
+are written to:
+
+```text
+experiments/<name>/checkpoints/
+├── training-pool/
+└── subsets/<subset-id>/
+```
+
+Single-run modes refuse to replace an existing checkpoint. The all-training-sets
+mode skips complete checkpoints so an interrupted collection can be continued,
+but rejects incomplete checkpoint directories. Each selected training set gets
+a newly loaded base model, identically seeded LoRA initialization, fresh AdamW
+state, and the shared validation pool. Epoch metrics and checkpoint events are
+written as JSON lines to stdout.
+
+All experiment files and the selected device are validated before the model is
+loaded. Training reads the model path from `manifest.yaml` and all recipe values
+from `training.yaml`; the command exposes no recipe overrides.
 
 ## Shared rules
 

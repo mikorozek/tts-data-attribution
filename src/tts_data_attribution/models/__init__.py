@@ -2,7 +2,7 @@ from .gradients import (
     collect_per_example_gradients,
     correct_gradients_with_adamw,
 )
-from .lora import apply_lora, save_lora_checkpoint
+from .lora import apply_lora, is_lora_checkpoint_complete, save_lora_checkpoint
 from .projection import BlockDiagonalProjector, TwoSidedProjector
 from .trackstar import (
     TrackStar,
@@ -10,6 +10,7 @@ from .trackstar import (
     attribution_scores,
     stack_projected_gradients,
 )
+from .training import evaluate, train
 
 
 def qwen3_tts_encoder() -> type:
@@ -27,9 +28,12 @@ __all__ = [
     "BlockDiagonalProjector",
     "collect_per_example_gradients",
     "correct_gradients_with_adamw",
+    "evaluate",
+    "is_lora_checkpoint_complete",
     "save_lora_checkpoint",
     "stack_projected_gradients",
     "TrackStar",
     "TrackStarTransform",
+    "train",
     "TwoSidedProjector",
 ]

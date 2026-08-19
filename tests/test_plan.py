@@ -74,7 +74,8 @@ def test_plan_has_the_requested_shape() -> None:
     assert len(plan.training_pool) == 8
     assert len(plan.validation_pool) == 2
     assert len(plan.subsets) == 3
-    assert all(len(subset) == 4 for subset in plan.subsets)
+    assert list(plan.subsets) == ["subset-0000", "subset-0001", "subset-0002"]
+    assert all(len(subset) == 4 for subset in plan.subsets.values())
 
 
 def test_references_are_one_per_speaker_and_never_in_the_pool() -> None:
@@ -101,7 +102,7 @@ def test_pools_and_references_are_dialogue_disjoint() -> None:
 def test_subsets_are_drawn_from_the_pool_without_repeats() -> None:
     plan = Plan.sample(manifest(), dataset())
 
-    for subset in plan.subsets:
+    for subset in plan.subsets.values():
         assert set(subset) <= set(plan.training_pool)
         assert len(set(subset)) == len(subset)
 
@@ -147,4 +148,25 @@ def test_plan_round_trips_through_json(tmp_path: Path) -> None:
     plan.to_json(path)
 
     assert Plan.from_json(path) == plan
-    assert replace(plan, subsets=[]) != plan
+    assert replace(plan, subsets={}) != plan
+
+
+def test_plan_rejects_unnamed_subsets() -> None:
+    unnamed_subsets: Any = [["training"]]
+    with pytest.raises(ValueError, match="subsets must map names"):
+        Plan(
+            references={},
+            training_pool=["training"],
+            validation_pool=["validation"],
+            subsets=unnamed_subsets,
+        )
+
+
+def test_plan_rejects_invalid_subset_names() -> None:
+    with pytest.raises(ValueError, match="consecutive stable IDs"):
+        Plan(
+            references={},
+            training_pool=["training"],
+            validation_pool=["validation"],
+            subsets={"../outside": ["training"]},
+        )

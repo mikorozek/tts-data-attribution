@@ -45,7 +45,44 @@ class Plan:
     references: dict[str, str]
     training_pool: list[str]
     validation_pool: list[str]
-    subsets: list[list[str]]
+    subsets: dict[str, list[str]]
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.references, dict) or not all(
+            isinstance(speaker, str) and isinstance(identifier, str)
+            for speaker, identifier in self.references.items()
+        ):
+            raise ValueError("references must map speaker names to utterance IDs")
+        for name, identifiers in (
+            ("training_pool", self.training_pool),
+            ("validation_pool", self.validation_pool),
+        ):
+            if not isinstance(identifiers, list) or not all(
+                isinstance(identifier, str) for identifier in identifiers
+            ):
+                raise ValueError(f"{name} must be a list of utterance IDs")
+            if len(identifiers) != len(set(identifiers)):
+                raise ValueError(f"{name} utterance IDs must be unique")
+        if set(self.training_pool) & set(self.validation_pool):
+            raise ValueError("training and validation pools must be disjoint")
+        if not isinstance(self.subsets, dict):
+            raise ValueError("subsets must map names to utterance ID lists")
+        expected_subset_names = {
+            f"subset-{index:04d}" for index in range(len(self.subsets))
+        }
+        if set(self.subsets) != expected_subset_names:
+            raise ValueError("subset names must be consecutive stable IDs")
+        for name, identifiers in self.subsets.items():
+            if (
+                not isinstance(name, str)
+                or not isinstance(identifiers, list)
+                or not all(isinstance(identifier, str) for identifier in identifiers)
+            ):
+                raise ValueError("subsets must map names to utterance ID lists")
+            if len(identifiers) != len(set(identifiers)):
+                raise ValueError(f"subset {name} utterance IDs must be unique")
+            if not set(identifiers) <= set(self.training_pool):
+                raise ValueError(f"subset {name} must contain only training pool IDs")
 
     @classmethod
     def sample(
@@ -102,10 +139,12 @@ class Plan:
             manifest.training_pool_size,
             "training_pool",
         )
-        subsets = [
-            sorted(rng.sample(training_pool, manifest.subset_size))
-            for _ in range(manifest.subset_count)
-        ]
+        subsets = {
+            f"subset-{index:04d}": sorted(
+                rng.sample(training_pool, manifest.subset_size)
+            )
+            for index in range(manifest.subset_count)
+        }
         return cls(
             references=references,
             training_pool=training_pool,

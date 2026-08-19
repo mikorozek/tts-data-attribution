@@ -1,18 +1,31 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
+from typing import TypeVar
 
 import torch
-from qwen_tts.core.models.modeling_qwen3_tts import (
-    Qwen3TTSForConditionalGeneration,
-)
+from torch import nn
 
-from .objective import objective
+ModelType = TypeVar("ModelType", bound=nn.Module)
+Batch = dict[str, torch.Tensor]
+Objective = Callable[[ModelType, Batch], torch.Tensor]
+
+
+def _losses(
+    model: ModelType,
+    batch: Batch,
+    objective: Objective[ModelType],
+) -> torch.Tensor:
+    losses = objective(model, batch)
+    if losses.ndim != 1:
+        raise ValueError("objective must return one loss per example")
+    return losses
 
 
 def evaluate(
-    model: Qwen3TTSForConditionalGeneration,
-    data_loader: Iterable[dict[str, torch.Tensor]],
+    model: ModelType,
+    data_loader: Iterable[Batch],
+    objective: Objective[ModelType],
     device: torch.device | str,
 ) -> float:
     model.eval()
@@ -21,7 +34,7 @@ def evaluate(
     with torch.no_grad():
         for batch in data_loader:
             batch = {name: tensor.to(device) for name, tensor in batch.items()}
-            losses = objective(model, batch)
+            losses = _losses(model, batch, objective)
             total_loss += losses.sum().item()
             example_count += losses.numel()
     if example_count == 0:
@@ -30,12 +43,14 @@ def evaluate(
 
 
 def train(
-    model: Qwen3TTSForConditionalGeneration,
-    training_loader: Iterable[dict[str, torch.Tensor]],
-    validation_loader: Iterable[dict[str, torch.Tensor]],
+    model: ModelType,
+    training_loader: Iterable[Batch],
+    validation_loader: Iterable[Batch],
     optimizer: torch.optim.Optimizer,
+    objective: Objective[ModelType],
     epochs: int,
     device: torch.device | str,
+    epoch_callback: Callable[[dict[str, int | float]], None] | None = None,
 ) -> list[dict[str, int | float]]:
     history = []
     step = 0
@@ -46,7 +61,7 @@ def train(
         for batch in training_loader:
             batch = {name: tensor.to(device) for name, tensor in batch.items()}
             optimizer.zero_grad(set_to_none=True)
-            losses = objective(model, batch)
+            losses = _losses(model, batch, objective)
             losses.mean().backward()
             optimizer.step()
             step += 1
@@ -54,12 +69,13 @@ def train(
             example_count += losses.numel()
         if example_count == 0:
             raise ValueError("cannot train with an empty data loader")
-        history.append(
-            {
-                "epoch": epoch,
-                "step": step,
-                "training_loss": total_loss / example_count,
-                "validation_loss": evaluate(model, validation_loader, device),
-            }
-        )
+        metrics: dict[str, int | float] = {
+            "epoch": epoch,
+            "step": step,
+            "training_loss": total_loss / example_count,
+            "validation_loss": evaluate(model, validation_loader, objective, device),
+        }
+        history.append(metrics)
+        if epoch_callback is not None:
+            epoch_callback(metrics)
     return history

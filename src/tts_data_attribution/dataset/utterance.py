@@ -21,6 +21,11 @@ class Utterance:
 class UtteranceDataset(Dataset[Utterance]):
     def __init__(self, utterances: Iterable[Utterance]) -> None:
         self.utterances = tuple(utterances)
+        self.utterances_by_id = {
+            utterance.id: utterance for utterance in self.utterances
+        }
+        if len(self.utterances_by_id) != len(self.utterances):
+            raise ValueError("utterance IDs must be unique")
 
     @classmethod
     def from_jsonl(cls, path: str | Path) -> Self:
@@ -42,7 +47,10 @@ class UtteranceDataset(Dataset[Utterance]):
                 stream.write("\n")
 
     def ids(self) -> set[str]:
-        return {utterance.id for utterance in self.utterances}
+        return set(self.utterances_by_id)
+
+    def get_utterances_by_ids(self, identifiers: list[str]) -> list[Utterance]:
+        return [self.utterances_by_id[identifier] for identifier in identifiers]
 
     def __len__(self) -> int:
         return len(self.utterances)

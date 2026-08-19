@@ -87,3 +87,35 @@ def test_apply_lora_trains_and_serializes_only_adapter_parameters(
     reloaded_model.eval()
 
     assert torch.allclose(model(inputs), reloaded_model(inputs))
+
+
+def test_apply_lora_uses_the_requested_initialization_seed() -> None:
+    config = LoraConfig(
+        r=2,
+        lora_alpha=4,
+        lora_dropout=0.0,
+        bias="none",
+        target_modules=["q_proj", "down_proj"],
+    )
+    first_base = TinyDecoder(TinyDecoderConfig())
+    second_base = TinyDecoder(TinyDecoderConfig())
+    second_base.load_state_dict(first_base.state_dict())
+
+    first = apply_lora(first_base, config, seed=1234)
+    second = apply_lora(second_base, config, seed=1234)
+
+    first_trainable = {
+        name: parameter
+        for name, parameter in first.named_parameters()
+        if parameter.requires_grad
+    }
+    second_trainable = {
+        name: parameter
+        for name, parameter in second.named_parameters()
+        if parameter.requires_grad
+    }
+    assert list(first_trainable) == list(second_trainable)
+    assert all(
+        torch.equal(parameter, second_trainable[name])
+        for name, parameter in first_trainable.items()
+    )

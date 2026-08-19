@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 from typing import cast
 
@@ -9,9 +10,28 @@ from peft import LoraConfig, PeftModel, get_peft_model
 from transformers import PreTrainedModel
 
 
-def apply_lora(model: PreTrainedModel, config: LoraConfig) -> PeftModel:
+def apply_lora(
+    model: PreTrainedModel,
+    config: LoraConfig,
+    *,
+    seed: int | None = None,
+) -> PeftModel:
     model.requires_grad_(False)
+    if seed is not None:
+        torch.manual_seed(seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(seed)
     return cast(PeftModel, get_peft_model(model, config))
+
+
+def is_lora_checkpoint_complete(directory: str | Path) -> bool:
+    directory = Path(directory)
+    return (
+        (directory / "adapter" / "adapter_config.json").is_file()
+        and (directory / "adapter" / "adapter_model.safetensors").is_file()
+        and (directory / "optimizer.pt").is_file()
+        and (directory / "metadata.json").is_file()
+    )
 
 
 def save_lora_checkpoint(
@@ -76,10 +96,18 @@ def save_lora_checkpoint(
         "parameters": parameters,
         "step": step,
     }
-    directory.mkdir(parents=True)
-    adapter.save_pretrained(str(directory / "adapter"), safe_serialization=True)
-    torch.save(optimizer.state_dict(), directory / "optimizer.pt")
-    (directory / "metadata.json").write_text(
+    if directory.exists():
+        raise FileExistsError(f"checkpoint already exists at {directory}")
+    temporary_directory = directory.with_name(f".{directory.name}.tmp")
+    if temporary_directory.exists():
+        shutil.rmtree(temporary_directory)
+    temporary_directory.mkdir(parents=True)
+    adapter.save_pretrained(
+        str(temporary_directory / "adapter"), safe_serialization=True
+    )
+    torch.save(optimizer.state_dict(), temporary_directory / "optimizer.pt")
+    (temporary_directory / "metadata.json").write_text(
         json.dumps(metadata, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
+    temporary_directory.rename(directory)

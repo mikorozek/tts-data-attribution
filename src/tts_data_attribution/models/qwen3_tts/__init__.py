@@ -3,17 +3,17 @@ from .collate import collate
 from .encoder import Qwen3TTSEncoder
 from .forward import teacher_forced_forward
 from .inputs import build_input_embeddings
+from .model import LORA_TARGET_MODULES, load_model
 from .objective import loss_components, objective
-from .training import evaluate, train
 
 __all__ = [
     "Qwen3TTSGradientProjector",
+    "LORA_TARGET_MODULES",
     "Qwen3TTSEncoder",
     "build_input_embeddings",
     "collate",
-    "evaluate",
+    "load_model",
     "loss_components",
     "objective",
     "teacher_forced_forward",
-    "train",
 ]

@@ -81,6 +81,18 @@ overwrite an existing recipe. Alternatively, copy
 [`training.example.yaml`](training.example.yaml) into the experiment directory
 and edit it using the same validated schema.
 
+Start one training run or all runs required for LDS:
+
+```bash
+uv run tda training start voice-study-1 --training-pool --device cuda:0
+uv run tda training start voice-study-1 --subset subset-0007 --device cuda:0
+uv run tda training start voice-study-1 --all-training-sets --device cuda:0
+```
+
+Exactly one data-selection flag is required. The last form trains the full
+training pool and every named subset, skipping complete checkpoints when it is
+resumed.
+
 ## Dataset API
 
 `DailyTalkDataset` transiently exposes raw source records for sampling and
