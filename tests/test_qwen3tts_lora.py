@@ -19,6 +19,7 @@ from tts_data_attribution.dataset import Utterance
 from tts_data_attribution.models import (
     apply_lora,
     collect_per_example_gradients,
+    correct_gradients_with_adamw,
     save_lora_checkpoint,
 )
 from tts_data_attribution.models.qwen3_tts import (
@@ -284,3 +285,15 @@ def test_train_processes_every_batch_and_evaluates_without_gradients(
         original_losses = objective(model, validation_batch)
         reloaded_losses = objective(reloaded_model, validation_batch)
     torch.testing.assert_close(reloaded_losses, original_losses)
+
+    losses = objective(reloaded_model, validation_batch)
+    [gradients] = list(collect_per_example_gradients(reloaded_model.talker, losses))
+    corrected_gradients = correct_gradients_with_adamw(
+        reloaded_model.talker,
+        reloaded_optimizer,
+        gradients,
+    )
+    assert list(corrected_gradients) == list(reloaded_parameters)
+    assert all(
+        torch.isfinite(gradient).all() for gradient in corrected_gradients.values()
+    )

@@ -91,7 +91,8 @@ The interface is specified in
 [`docs/specs/dataset-integration.md`](docs/specs/dataset-integration.md). Qwen3-TTS
 batching, differentiable talker inputs, and the per-example codebook objective
 are implemented. Generic LoRA injection, the core training and validation loop,
-atomic final adapter and AdamW checkpoint serialization, and generic
-per-example gradient collection are also implemented. Run orchestration,
-TrackStar attribution, and evaluation commands will be added only when their
-behavior is implemented.
+final adapter and AdamW checkpoint serialization, per-example gradient
+collection, AdamW second-moment correction, and two-sided random projection are
+also implemented. Qwen projection grouping, run orchestration, TrackStar
+attribution, and evaluation commands will be added only when their behavior is
+implemented.
