@@ -92,7 +92,7 @@ The interface is specified in
 batching, differentiable talker inputs, and the per-example codebook objective
 are implemented. Generic LoRA injection, the core training and validation loop,
 final adapter and AdamW checkpoint serialization, per-example gradient
-collection, AdamW second-moment correction, and two-sided random projection are
-also implemented. Qwen projection grouping, run orchestration, TrackStar
-attribution, and evaluation commands will be added only when their behavior is
-implemented.
+collection, AdamW second-moment correction, Qwen LoRA block projection,
+TrackStar Hessian correction, unit normalization, and attribution scoring are
+also implemented. Projected-gradient artifacts, run orchestration, and
+evaluation commands will be added only when their behavior is implemented.

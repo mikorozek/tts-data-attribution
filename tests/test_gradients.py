@@ -68,3 +68,55 @@ def test_correct_gradients_with_bias_corrected_adamw_second_moment() -> None:
             gradient,
             torch.full_like(gradient, (2.0 / denominator).item()),
         )
+
+
+def test_adamw_correction_uses_float32_for_lower_precision_gradients() -> None:
+    model = nn.Linear(2, 1, bias=False)
+    optimizer = torch.optim.AdamW(model.parameters())
+    parameter = model.weight
+    optimizer.state[parameter]["step"] = torch.tensor(1.0)
+    optimizer.state[parameter]["exp_avg_sq"] = torch.ones_like(parameter)
+
+    corrected = correct_gradients_with_adamw(
+        model,
+        optimizer,
+        {"weight": torch.ones_like(parameter, dtype=torch.bfloat16)},
+    )
+
+    assert corrected["weight"].dtype == torch.float32
+    assert torch.isfinite(corrected["weight"]).all()
+
+
+@pytest.mark.parametrize(
+    ("optimizer_kwargs", "state", "message"),
+    [
+        ({"amsgrad": True}, {"step": 1, "exp_avg_sq": 1.0}, "AMSGrad"),
+        ({}, {}, "incomplete"),
+        ({}, {"step": 0, "exp_avg_sq": 1.0}, "positive"),
+    ],
+)
+def test_adamw_correction_rejects_unsupported_or_incomplete_state(
+    optimizer_kwargs: dict[str, bool],
+    state: dict[str, int | float],
+    message: str,
+) -> None:
+    model = nn.Linear(2, 1, bias=False)
+    optimizer = torch.optim.AdamW(
+        model.parameters(),
+        amsgrad=optimizer_kwargs.get("amsgrad", False),
+    )
+    parameter = model.weight
+    if "step" in state:
+        optimizer.state[parameter]["step"] = torch.tensor(float(state["step"]))
+    if "exp_avg_sq" in state:
+        optimizer.state[parameter]["exp_avg_sq"] = torch.full_like(
+            parameter,
+            float(state["exp_avg_sq"]),
+        )
+
+    with pytest.raises(ValueError, match=message):
+        correct_gradients_with_adamw(
+            model,
+            optimizer,
+            {"weight": torch.ones_like(parameter)},
+        )

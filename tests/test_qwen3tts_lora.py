@@ -17,12 +17,15 @@ from torch.utils.data import DataLoader
 
 from tts_data_attribution.dataset import Utterance
 from tts_data_attribution.models import (
+    TrackStarTransform,
     apply_lora,
+    attribution_scores,
     collect_per_example_gradients,
     correct_gradients_with_adamw,
     save_lora_checkpoint,
 )
 from tts_data_attribution.models.qwen3_tts import (
+    Qwen3TTSGradientProjector,
     collate,
     evaluate,
     objective,
@@ -159,6 +162,48 @@ def test_qwen_objective_produces_all_talker_lora_gradients() -> None:
         for name, gradient in gradients.items()
     )
     assert all(parameter.grad is None for parameter in model.parameters())
+
+    projector = Qwen3TTSGradientProjector(
+        model.talker,
+        talker_output_dimension=4,
+        code_predictor_output_dimension=9,
+        talker_layers_per_block=4,
+        code_predictor_layers_per_block=5,
+        seed=13,
+    )
+    repeated_projector = Qwen3TTSGradientProjector(
+        model.talker,
+        talker_output_dimension=4,
+        code_predictor_output_dimension=9,
+        talker_layers_per_block=4,
+        code_predictor_layers_per_block=5,
+        seed=13,
+    )
+    projected = projector(gradients)
+
+    assert projector.block_names == (
+        "talker.layers.0-0.attention",
+        "talker.layers.0-0.mlp",
+        "code_predictor.layers.0-0.attention",
+        "code_predictor.layers.0-0.mlp",
+    )
+    assert [
+        len(projector.block_parameter_names[name]) for name in projector.block_names
+    ] == [8, 6, 8, 6]
+    assert sum(parameter.numel() for parameter in adapter_parameters.values()) == sum(
+        adapter_parameters[name].numel()
+        for names in projector.block_parameter_names.values()
+        for name in names
+    )
+    assert [value.shape for value in projected.values()] == [
+        (4,),
+        (4,),
+        (9,),
+        (9,),
+    ]
+    assert all(torch.isfinite(value).all() for value in projected.values())
+    for name, value in projected.items():
+        torch.testing.assert_close(value, repeated_projector(gradients)[name])
 
 
 def test_train_processes_every_batch_and_evaluates_without_gradients(
@@ -297,3 +342,22 @@ def test_train_processes_every_batch_and_evaluates_without_gradients(
     assert all(
         torch.isfinite(gradient).all() for gradient in corrected_gradients.values()
     )
+
+    projector = Qwen3TTSGradientProjector(
+        reloaded_model.talker,
+        talker_output_dimension=4,
+        code_predictor_output_dimension=4,
+        talker_layers_per_block=4,
+        code_predictor_layers_per_block=5,
+        seed=13,
+    )
+    projected = {
+        name: value.unsqueeze(0)
+        for name, value in projector(corrected_gradients).items()
+    }
+    transform = TrackStarTransform(projected, projected, task_weight=0.0)
+    encoding = transform(projected)
+
+    assert encoding.shape == (1, 16)
+    torch.testing.assert_close(torch.linalg.vector_norm(encoding, dim=1), torch.ones(1))
+    torch.testing.assert_close(attribution_scores(encoding, encoding), torch.ones(1, 1))

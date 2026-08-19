@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 import torch
 
-from tts_data_attribution.models import TwoSidedProjector
+from tts_data_attribution.models import BlockDiagonalProjector, TwoSidedProjector
 
 
 def test_two_sided_projection_has_requested_dimension_and_is_reproducible() -> None:
@@ -58,3 +58,43 @@ def test_two_sided_projection_requires_a_positive_square(
             seed=0,
             device="cpu",
         )
+
+
+def test_block_diagonal_projection_matches_an_explicit_block_matrix() -> None:
+    matrices = {
+        "first": torch.arange(6, dtype=torch.float32).reshape(2, 3),
+        "second": torch.arange(2, dtype=torch.float32).reshape(1, 2),
+    }
+    projector = BlockDiagonalProjector(
+        {name: matrix.shape for name, matrix in matrices.items()},
+        output_dimension=4,
+        seed=17,
+        device="cpu",
+    )
+
+    explicit_matrix = torch.block_diag(*matrices.values())
+    explicit_left = torch.cat(
+        [projector.matrix_projectors[name].left for name in projector.matrix_names],
+        dim=1,
+    )
+    explicit_right = torch.cat(
+        [projector.matrix_projectors[name].right for name in projector.matrix_names],
+        dim=1,
+    )
+    expected = (explicit_left @ explicit_matrix @ explicit_right.T).flatten()
+
+    torch.testing.assert_close(projector(matrices), expected)
+
+
+def test_block_diagonal_projection_uses_distinct_maps_for_named_matrices() -> None:
+    projector = BlockDiagonalProjector(
+        {"first": (2, 3), "second": (2, 3)},
+        output_dimension=4,
+        seed=23,
+        device="cpu",
+    )
+
+    assert not torch.equal(
+        projector.matrix_projectors["first"].left,
+        projector.matrix_projectors["second"].left,
+    )

@@ -55,3 +55,38 @@ class TwoSidedProjector:
                 f"received {tuple(matrix.shape)}"
             )
         return (self.left @ matrix @ self.right.T).flatten()
+
+
+class BlockDiagonalProjector:
+    def __init__(
+        self,
+        input_shapes: dict[str, tuple[int, int] | torch.Size],
+        output_dimension: int,
+        *,
+        seed: int,
+        device: torch.device | str,
+        dtype: torch.dtype = torch.float32,
+    ) -> None:
+        if not input_shapes:
+            raise ValueError("block-diagonal projection requires matrices")
+        self.input_shapes = {name: tuple(shape) for name, shape in input_shapes.items()}
+        self.matrix_names = tuple(input_shapes)
+        self.output_dimension = output_dimension
+        self.matrix_projectors = {
+            name: TwoSidedProjector(
+                shape,
+                output_dimension,
+                seed=seed + index,
+                device=device,
+                dtype=dtype,
+            )
+            for index, (name, shape) in enumerate(input_shapes.items())
+        }
+
+    def __call__(self, matrices: dict[str, torch.Tensor]) -> torch.Tensor:
+        if matrices.keys() != self.input_shapes.keys():
+            raise ValueError("projection matrices do not match the block layout")
+        projected = [
+            self.matrix_projectors[name](matrices[name]) for name in self.matrix_names
+        ]
+        return torch.stack(projected).sum(dim=0)

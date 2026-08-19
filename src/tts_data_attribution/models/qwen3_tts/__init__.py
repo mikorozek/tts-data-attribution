@@ -1,3 +1,4 @@
+from .attribution import Qwen3TTSGradientProjector
 from .collate import collate
 from .encoder import Qwen3TTSEncoder
 from .forward import teacher_forced_forward
@@ -6,6 +7,7 @@ from .objective import loss_components, objective
 from .training import evaluate, train
 
 __all__ = [
+    "Qwen3TTSGradientProjector",
     "Qwen3TTSEncoder",
     "build_input_embeddings",
     "collate",
