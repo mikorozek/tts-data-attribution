@@ -98,10 +98,7 @@ def run_init(arguments: argparse.Namespace) -> None:
         raise CommandError(f"training target is incomplete at {target}")
 
     projection_directory = (
-        experiment_directory
-        / "trackstar"
-        / "projections"
-        / arguments.projection_name
+        experiment_directory / "trackstar" / "projections" / arguments.projection_name
     )
     if projection_directory.exists():
         raise CommandError(f"projection already exists at {projection_directory}")
@@ -154,10 +151,7 @@ def run_apply(arguments: argparse.Namespace) -> None:
     collection_name = "training-pool" if arguments.training_pool else "query-pool"
     experiment_directory = Path("experiments") / arguments.experiment_name
     projection_directory = (
-        experiment_directory
-        / "trackstar"
-        / "projections"
-        / arguments.projection_name
+        experiment_directory / "trackstar" / "projections" / arguments.projection_name
     )
     projection_manifest_path = projection_directory / "manifest.yaml"
     matrices_path = projection_directory / "matrices.pt"
@@ -193,16 +187,13 @@ def run_apply(arguments: argparse.Namespace) -> None:
     ) as error:
         raise CommandError(f"cannot read projection: {error}") from error
 
-    training_run_directory = (
-        experiment_directory / "training-runs" / training_run_name
-    )
+    training_run_directory = experiment_directory / "training-runs" / training_run_name
     target = training_run_directory / "target"
     paths = {
         "experiment manifest": experiment_directory / "manifest.yaml",
         "plan": experiment_directory / "plan.json",
         "training run manifest": training_run_directory / "manifest.yaml",
-        "encoded utterances": experiment_directory
-        / "sampled_utterances_encoded.jsonl",
+        "encoded utterances": experiment_directory / "sampled_utterances_encoded.jsonl",
         "speaker embeddings": experiment_directory / "speaker_embeddings.pt",
         "training target metadata": target / "metadata.json",
         "optimizer": target / "optimizer.pt",
@@ -262,9 +253,7 @@ def run_apply(arguments: argparse.Namespace) -> None:
         for name, embedding in speaker_embeddings.items()
     ):
         raise CommandError("speaker embeddings must map speaker names to tensors")
-    identifiers = (
-        plan.training_pool if arguments.training_pool else plan.query_pool
-    )
+    identifiers = plan.training_pool if arguments.training_pool else plan.query_pool
     if not identifiers:
         raise CommandError(f"{collection_name} must not be empty")
     missing_ids = sorted(set(identifiers) - encoded.ids())
@@ -277,9 +266,7 @@ def run_apply(arguments: argparse.Namespace) -> None:
     if missing_speakers:
         raise CommandError(f"speaker embeddings missing for: {missing_speakers}")
 
-    dtype = {"bfloat16": torch.bfloat16, "float32": torch.float32}[
-        training_run.dtype
-    ]
+    dtype = {"bfloat16": torch.bfloat16, "float32": torch.float32}[training_run.dtype]
     try:
         model = load_model(experiment.model_path, device=device, dtype=dtype)
         model.talker = cast(
@@ -307,9 +294,7 @@ def run_apply(arguments: argparse.Namespace) -> None:
             raise ValueError("trainable parameter layout differs from the projection")
         parameter_names = [name for name, _ in trainable_parameters]
         target_parameter_names = [
-            name
-            for group in target_metadata["parameter_groups"]
-            for name in group
+            name for group in target_metadata["parameter_groups"] for name in group
         ]
         if parameter_names != target_parameter_names:
             raise ValueError("optimizer parameter ordering differs from the model")

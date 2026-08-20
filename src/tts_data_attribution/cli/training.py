@@ -114,9 +114,7 @@ def run_configure(arguments: argparse.Namespace) -> None:
 
     timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
     training_run_name = f"{training_set}-{timestamp}"
-    training_run_directory = (
-        experiment_directory / "training-runs" / training_run_name
-    )
+    training_run_directory = experiment_directory / "training-runs" / training_run_name
     try:
         training_run_directory.mkdir(parents=True)
         manifest.to_yaml(training_run_directory / "manifest.yaml")
@@ -136,8 +134,7 @@ def run_start(arguments: argparse.Namespace) -> None:
         "manifest": experiment_directory / "manifest.yaml",
         "plan": experiment_directory / "plan.json",
         "training run manifest": training_run_directory / "manifest.yaml",
-        "encoded utterances": experiment_directory
-        / "sampled_utterances_encoded.jsonl",
+        "encoded utterances": experiment_directory / "sampled_utterances_encoded.jsonl",
         "speaker embeddings": experiment_directory / "speaker_embeddings.pt",
     }
     missing = [name for name, path in paths.items() if not path.is_file()]

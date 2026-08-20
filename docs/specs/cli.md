@@ -1,6 +1,6 @@
 # CLI
 
-Status: **experiment initialization, encoding, training, projection, and TrackStar attribution implemented**
+Status: **experiment initialization, encoding, training, TrackStar attribution, and LDS evaluation implemented**
 
 ## Command tree
 
@@ -24,8 +24,10 @@ tda
 │   │             --training-run NAME --output-dimension N --seed N
 │   └── apply     <experiment> <projection-name>
 │                 (--training-pool | --query-pool) [--device]
-└── trackstar
-    └── compute   <experiment> <projection-name> --task-weight W [--device]
+├── trackstar
+│   └── compute   <experiment> <projection-name> --task-weight W [--device]
+└── lds
+    └── compute   <experiment> --projection NAME [--device]
 ```
 
 ## `tda experiment init`
@@ -195,6 +197,52 @@ trackstar/projections/<projection-name>/attributions.pt
 
 The file contains `task_weight`, ordered `training_ids`, ordered `query_ids`,
 and the attribution matrix. The task weight is required and has no default.
+
+## `tda lds compute`
+
+`compute` discovers every completed subset training run in the experiment. It
+ignores incomplete runs and refuses ambiguity when more than one completed run
+exists for the same subset. Each subset run must use the same training recipe as
+the training-pool run bound to the selected projection.
+
+For every subset adapter, the command evaluates the ordered query pool and
+stores its per-query objective losses. It constructs the subset membership
+matrix and computes attribution-derived responses as:
+
+```text
+membership [subsets, training] @ attributions [training, queries]
+```
+
+The Qwen3-TTS response integration explicitly defines the observed response as
+the negative per-query objective. The reusable LDS backend receives only
+attributions, membership masks, and observed scalar responses; it does not
+assume what the response means.
+
+Following TRAK Definition 2.4, the command always computes Spearman correlation
+across subsets separately for every query and reports the arithmetic mean across
+queries. These protocol choices are not CLI options. It also performs 1,000
+seeded bootstrap repetitions by resampling complete subset rows and reports the
+fixed 95% percentile interval used by the TRAK evaluation protocol.
+
+The original TRAK benchmark averages five independent training runs for each of
+100 subset masks before computing LDS. This experiment has one fixed-seed model
+per subset, so its interval measures finite-subset uncertainty conditional on
+those realized models and does not measure training-seed variability.
+
+The command publishes one immutable artifact atomically:
+
+```text
+experiments/<experiment>/trackstar/projections/<projection-name>/lds.pt
+```
+
+The artifact records the resolved LDS configuration, response definition,
+subset IDs and training-run names, membership matrix, query losses, observed
+and predicted responses, per-query correlations, mean LDS, bootstrap mean-LDS
+samples, and the 95% confidence interval.
+
+The canonical definition and evaluation procedure are in the TRAK paper,
+Definition 2.4 and Section 4.1:
+<https://proceedings.mlr.press/v202/park23c.html>.
 
 ## Shared rules
 

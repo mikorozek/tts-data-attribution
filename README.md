@@ -129,6 +129,20 @@ The command writes `attributions.pt`, containing the ordered training and query
 IDs and an attribution matrix shaped `[number of training examples, number of
 query examples]`.
 
+Evaluate all unambiguous, completed subset training runs with LDS:
+
+```bash
+uv run tda lds compute voice-study-1 \
+  --projection two-sided-4096 --device cuda:0
+```
+
+The command evaluates the query objective under each subset adapter, sums the
+attribution scores selected by each subset, and atomically saves the observed
+responses, predicted responses, per-query Spearman correlations, their mean,
+and a fixed 95% subset-bootstrap interval in the projection's `lds.pt`. The
+correlation and aggregation follow the canonical TRAK LDS definition and are
+not user-facing options.
+
 ## Dataset API
 
 `DailyTalkDataset` transiently exposes raw source records for sampling and
@@ -154,5 +168,5 @@ are implemented. Generic LoRA injection, the core training and validation loop,
 final adapter and AdamW checkpoint serialization, per-example gradient
 collection, AdamW second-moment correction, Qwen LoRA block projection,
 TrackStar Hessian correction, unit normalization, and attribution scoring are
-also implemented, together with named training runs and persisted projected
-training/query pools. LDS evaluation remains to be implemented.
+also implemented, together with named training runs, persisted projected
+training/query pools, and LDS evaluation over completed subset models.

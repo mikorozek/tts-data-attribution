@@ -28,9 +28,9 @@ def test_gauss_newton_hessian_weight_boundaries_select_one_collection() -> None:
     training = torch.tensor([[1.0, 2.0]])
     queries = torch.tensor([[3.0, 4.0]])
 
-    training_hessian = GaussNewtonHessianApproximation(
-        task_weight=0.0
-    ).compute(training, queries)
+    training_hessian = GaussNewtonHessianApproximation(task_weight=0.0).compute(
+        training, queries
+    )
     query_hessian = GaussNewtonHessianApproximation(task_weight=1.0).compute(
         training,
         queries,

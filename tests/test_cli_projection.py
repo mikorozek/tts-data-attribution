@@ -214,10 +214,7 @@ def test_projection_apply_projects_an_experiment_pool(
         assert "speaker" in speaker_embeddings
         return {
             "inputs": torch.tensor(
-                [
-                    [float(index + 1), 1.0, 2.0]
-                    for index, _ in enumerate(utterances)
-                ]
+                [[float(index + 1), 1.0, 2.0] for index, _ in enumerate(utterances)]
             )
         }
 
@@ -315,7 +312,6 @@ def test_projection_init_requires_a_complete_training_target(
 
     assert "training target is incomplete" in capsys.readouterr().err
     assert not (experiment / "trackstar").exists()
-
 
 
 @pytest.mark.parametrize(

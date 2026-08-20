@@ -181,9 +181,10 @@ def test_training_configure_creates_a_named_training_pool_run(
         r"training-pool-\d{8}T\d{12}Z",
         run_directory.name,
     )
-    assert TrainingRunManifest.from_yaml(
-        run_directory / "manifest.yaml"
-    ) == training_manifest()
+    assert (
+        TrainingRunManifest.from_yaml(run_directory / "manifest.yaml")
+        == training_manifest()
+    )
     assert sorted(path.name for path in run_directory.iterdir()) == ["manifest.yaml"]
     assert not (directory / "training.yaml").exists()
     assert not (directory / "checkpoints").exists()
@@ -259,9 +260,7 @@ def test_training_start_uses_the_configured_set_and_writes_the_target(
 
     run_directory = directory / "training-runs" / run_name
     assert trained_ids == [plan.training_pool]
-    assert targets == [
-        Path("experiments/study/training-runs") / run_name / "target"
-    ]
+    assert targets == [Path("experiments/study/training-runs") / run_name / "target"]
     assert json.loads((run_directory / "metrics.jsonl").read_text()) == {
         "epoch": 3,
         "step": 6,
@@ -281,9 +280,7 @@ def test_training_start_uses_a_configured_subset(
     assert main(["training", "start", "study", run_name, "--device", "cpu"]) == 0
 
     assert trained_ids == [plan.subsets["subset-0001"]]
-    assert targets == [
-        Path("experiments/study/training-runs") / run_name / "target"
-    ]
+    assert targets == [Path("experiments/study/training-runs") / run_name / "target"]
 
 
 def test_training_start_refuses_an_existing_target(

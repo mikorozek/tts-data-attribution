@@ -12,9 +12,7 @@ from .errors import CommandError
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:
-    trackstar_parser = subparsers.add_parser(
-        "trackstar", help="TrackStar attribution"
-    )
+    trackstar_parser = subparsers.add_parser("trackstar", help="TrackStar attribution")
     trackstar_subparsers = trackstar_parser.add_subparsers(required=True)
 
     compute_parser = trackstar_subparsers.add_parser(
@@ -37,10 +35,7 @@ def run_compute(arguments: argparse.Namespace) -> None:
 
     experiment_directory = Path("experiments") / arguments.experiment_name
     projection_directory = (
-        experiment_directory
-        / "trackstar"
-        / "projections"
-        / arguments.projection_name
+        experiment_directory / "trackstar" / "projections" / arguments.projection_name
     )
     paths = {
         "plan": experiment_directory / "plan.json",
@@ -48,9 +43,7 @@ def run_compute(arguments: argparse.Namespace) -> None:
         "projected training pool": projection_directory
         / "projected"
         / "training-pool.pt",
-        "projected query pool": projection_directory
-        / "projected"
-        / "query-pool.pt",
+        "projected query pool": projection_directory / "projected" / "query-pool.pt",
     }
     missing = [name for name, path in paths.items() if not path.is_file()]
     if missing:
@@ -132,9 +125,7 @@ def run_compute(arguments: argparse.Namespace) -> None:
         if largest_eigenvalue <= 0:
             raise ValueError("Hessian approximation has no positive directions")
         tolerance = (
-            torch.finfo(eigenvalues.dtype).eps
-            * hessian.shape[0]
-            * largest_eigenvalue
+            torch.finfo(eigenvalues.dtype).eps * hessian.shape[0] * largest_eigenvalue
         )
         retained = eigenvalues > tolerance
         if not torch.any(retained):

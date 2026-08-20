@@ -73,7 +73,6 @@ def test_training_run_manifest_rejects_unknown_keys(tmp_path: Path) -> None:
         TrainingRunManifest.from_yaml(path)
 
 
-
 def test_training_run_manifest_rejects_wrong_scalar_types(tmp_path: Path) -> None:
     path = tmp_path / "manifest.yaml"
     manifest().to_yaml(path)

@@ -2705,6 +2705,8 @@ dependencies = [
     { name = "peft" },
     { name = "pyyaml" },
     { name = "qwen-tts" },
+    { name = "scipy", version = "1.17.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
+    { name = "scipy", version = "1.18.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "torch" },
 ]
 
@@ -2719,6 +2721,7 @@ requires-dist = [
     { name = "peft", specifier = ">=0.20.0" },
     { name = "pyyaml", specifier = ">=6" },
     { name = "qwen-tts", editable = "third_party/Qwen3-TTS" },
+    { name = "scipy", specifier = ">=1.11" },
     { name = "torch", specifier = ">=2.0" },
 ]
 
