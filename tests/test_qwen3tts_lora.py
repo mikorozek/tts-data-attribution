@@ -17,19 +17,17 @@ from torch.utils.data import DataLoader
 
 from tts_data_attribution.dataset import Utterance
 from tts_data_attribution.models import (
-    TrackStarTransform,
     apply_lora,
-    attribution_scores,
-    collect_per_example_gradients,
-    correct_gradients_with_adamw,
     evaluate,
     save_lora_checkpoint,
     train,
 )
-from tts_data_attribution.models.qwen3_tts import (
-    Qwen3TTSGradientProjector,
-    collate,
-    objective,
+from tts_data_attribution.models.qwen3_tts import collate, objective
+from tts_data_attribution.trackstar import (
+    GaussNewtonHessianApproximation,
+    TwoSidedRandomProjection,
+    collect_per_example_gradients,
+    correct_gradients_with_adamw,
 )
 
 
@@ -155,55 +153,29 @@ def test_qwen_objective_produces_all_talker_lora_gradients() -> None:
         for name, parameter in model.talker.named_parameters()
         if parameter.requires_grad
     }
-    assert list(gradients) == list(adapter_parameters)
+    assert len(gradients) == len(adapter_parameters)
     assert all(
-        gradient.shape == adapter_parameters[name].shape
-        and torch.isfinite(gradient).all()
-        for name, gradient in gradients.items()
+        gradient.shape == parameter.shape and torch.isfinite(gradient).all()
+        for gradient, parameter in zip(
+            gradients,
+            adapter_parameters.values(),
+            strict=True,
+        )
     )
     assert all(parameter.grad is None for parameter in model.parameters())
 
-    projector = Qwen3TTSGradientProjector(
-        model.talker,
-        talker_output_dimension=4,
-        code_predictor_output_dimension=9,
-        talker_layers_per_block=4,
-        code_predictor_layers_per_block=5,
+    input_shapes = tuple(gradient.shape for gradient in gradients)
+    two_sided_projection = TwoSidedRandomProjection(
+        input_shapes,
+        output_dimension=4,
         seed=13,
+        device="cpu",
     )
-    repeated_projector = Qwen3TTSGradientProjector(
-        model.talker,
-        talker_output_dimension=4,
-        code_predictor_output_dimension=9,
-        talker_layers_per_block=4,
-        code_predictor_layers_per_block=5,
-        seed=13,
-    )
-    projected = projector(gradients)
 
-    assert projector.block_names == (
-        "talker.layers.0-0.attention",
-        "talker.layers.0-0.mlp",
-        "code_predictor.layers.0-0.attention",
-        "code_predictor.layers.0-0.mlp",
-    )
-    assert [
-        len(projector.block_parameter_names[name]) for name in projector.block_names
-    ] == [8, 6, 8, 6]
-    assert sum(parameter.numel() for parameter in adapter_parameters.values()) == sum(
-        adapter_parameters[name].numel()
-        for names in projector.block_parameter_names.values()
-        for name in names
-    )
-    assert [value.shape for value in projected.values()] == [
-        (4,),
-        (4,),
-        (9,),
-        (9,),
-    ]
-    assert all(torch.isfinite(value).all() for value in projected.values())
-    for name, value in projected.items():
-        torch.testing.assert_close(value, repeated_projector(gradients)[name])
+    projected = two_sided_projection(gradients)
+
+    assert projected.shape == (4,)
+    assert torch.isfinite(projected).all()
 
 
 def test_train_processes_every_batch_and_evaluates_without_gradients(
@@ -342,26 +314,20 @@ def test_train_processes_every_batch_and_evaluates_without_gradients(
         reloaded_optimizer,
         gradients,
     )
-    assert list(corrected_gradients) == list(reloaded_parameters)
-    assert all(
-        torch.isfinite(gradient).all() for gradient in corrected_gradients.values()
-    )
+    assert len(corrected_gradients) == len(reloaded_parameters)
+    assert all(torch.isfinite(gradient).all() for gradient in corrected_gradients)
 
-    projector = Qwen3TTSGradientProjector(
-        reloaded_model.talker,
-        talker_output_dimension=4,
-        code_predictor_output_dimension=4,
-        talker_layers_per_block=4,
-        code_predictor_layers_per_block=5,
+    projector = TwoSidedRandomProjection(
+        tuple(gradient.shape for gradient in corrected_gradients),
+        output_dimension=4,
         seed=13,
+        device="cpu",
     )
-    projected = {
-        name: value.unsqueeze(0)
-        for name, value in projector(corrected_gradients).items()
-    }
-    transform = TrackStarTransform(projected, projected, task_weight=0.0)
-    encoding = transform(projected)
+    projected = projector(corrected_gradients).unsqueeze(0)
+    hessian = GaussNewtonHessianApproximation(task_weight=0.0).compute(
+        projected,
+        projected,
+    )
 
-    assert encoding.shape == (1, 16)
-    torch.testing.assert_close(torch.linalg.vector_norm(encoding, dim=1), torch.ones(1))
-    torch.testing.assert_close(attribution_scores(encoding, encoding), torch.ones(1, 1))
+    assert hessian.shape == (4, 4)
+    torch.testing.assert_close(hessian, projected.T @ projected)

@@ -4,7 +4,7 @@ import pytest
 import torch
 from torch import nn
 
-from tts_data_attribution.models import (
+from tts_data_attribution.trackstar import (
     collect_per_example_gradients,
     correct_gradients_with_adamw,
 )
@@ -24,12 +24,10 @@ def test_collect_per_example_gradients_matches_backward() -> None:
         model.zero_grad(set_to_none=True)
         loss = (model(inputs[index]).squeeze(0) - targets[index]).square()
         loss.backward()
-        expected = {
-            name: parameter.grad for name, parameter in model.named_parameters()
-        }
-        assert list(gradients) == list(expected)
-        for name, gradient in gradients.items():
-            torch.testing.assert_close(gradient, expected[name])
+        expected = tuple(parameter.grad for parameter in model.parameters())
+        assert len(gradients) == len(expected)
+        for gradient, expected_gradient in zip(gradients, expected, strict=True):
+            torch.testing.assert_close(gradient, expected_gradient)
 
 
 def test_collect_per_example_gradients_requires_vector_losses() -> None:
@@ -51,10 +49,9 @@ def test_correct_gradients_with_bias_corrected_adamw_second_moment() -> None:
         betas=(0.9, 0.8),
         eps=0.05,
     )
-    gradients = {
-        name: torch.full_like(parameter, 2.0)
-        for name, parameter in model.named_parameters()
-    }
+    gradients = tuple(
+        torch.full_like(parameter, 2.0) for parameter in model.parameters()
+    )
     for parameter in model.parameters():
         optimizer.state[parameter]["step"] = torch.tensor(3.0)
         optimizer.state[parameter]["exp_avg_sq"] = torch.full_like(parameter, 0.4)
@@ -62,8 +59,8 @@ def test_correct_gradients_with_bias_corrected_adamw_second_moment() -> None:
     corrected = correct_gradients_with_adamw(model, optimizer, gradients)
 
     denominator = (torch.tensor(0.4) / (1 - 0.8**3)).sqrt() + 0.05
-    assert list(corrected) == list(gradients)
-    for gradient in corrected.values():
+    assert len(corrected) == len(gradients)
+    for gradient in corrected:
         torch.testing.assert_close(
             gradient,
             torch.full_like(gradient, (2.0 / denominator).item()),
@@ -80,11 +77,11 @@ def test_adamw_correction_uses_float32_for_lower_precision_gradients() -> None:
     corrected = correct_gradients_with_adamw(
         model,
         optimizer,
-        {"weight": torch.ones_like(parameter, dtype=torch.bfloat16)},
+        (torch.ones_like(parameter, dtype=torch.bfloat16),),
     )
 
-    assert corrected["weight"].dtype == torch.float32
-    assert torch.isfinite(corrected["weight"]).all()
+    assert corrected[0].dtype == torch.float32
+    assert torch.isfinite(corrected[0]).all()
 
 
 @pytest.mark.parametrize(
@@ -118,5 +115,5 @@ def test_adamw_correction_rejects_unsupported_or_incomplete_state(
         correct_gradients_with_adamw(
             model,
             optimizer,
-            {"weight": torch.ones_like(parameter)},
+            (torch.ones_like(parameter),),
         )

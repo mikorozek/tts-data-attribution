@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import json
-from functools import partial
 from pathlib import Path
 from typing import Any, cast
 
@@ -182,15 +181,11 @@ def run_start(arguments: argparse.Namespace) -> None:
     if device.type == "cuda" and not torch.cuda.is_available():
         raise CommandError("CUDA is not available")
 
-    collate_batch = partial(
-        collate,
-        speaker_embeddings=cast(dict[str, torch.Tensor], speaker_embeddings),
-    )
     validation_loader = DataLoader(
         validation_dataset,
         batch_size=config.batch_size,
         shuffle=False,
-        collate_fn=collate_batch,
+        collate_fn=lambda utterances: collate(utterances, speaker_embeddings),
     )
     dtype = {"bfloat16": torch.bfloat16, "float32": torch.float32}[config.dtype]
 
@@ -212,7 +207,7 @@ def run_start(arguments: argparse.Namespace) -> None:
             batch_size=config.batch_size,
             shuffle=True,
             generator=torch.Generator().manual_seed(config.seed),
-            collate_fn=collate_batch,
+            collate_fn=lambda utterances: collate(utterances, speaker_embeddings),
         )
 
         model = load_model(

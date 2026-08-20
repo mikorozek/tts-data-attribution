@@ -1,4 +1,3 @@
-from .attribution import Qwen3TTSGradientProjector
 from .collate import collate
 from .encoder import Qwen3TTSEncoder
 from .forward import teacher_forced_forward
@@ -7,7 +6,6 @@ from .model import LORA_TARGET_MODULES, load_model
 from .objective import loss_components, objective
 
 __all__ = [
-    "Qwen3TTSGradientProjector",
     "LORA_TARGET_MODULES",
     "Qwen3TTSEncoder",
     "build_input_embeddings",
