@@ -117,6 +117,18 @@ corrects each per-example gradient, and writes `projected/training-pool.pt`.
 Apply the same model, optimizer state, and projection to the experiment query
 pool with `--query-pool`; subset training targets are never projected.
 
+Compute the Hessian-corrected, unit-normalized TrackStar scores after both pools
+have been projected:
+
+```bash
+uv run tda trackstar compute voice-study-1 two-sided-4096 \
+  --task-weight 0.9 --device cuda:0
+```
+
+The command writes `attributions.pt`, containing the ordered training and query
+IDs and an attribution matrix shaped `[number of training examples, number of
+query examples]`.
+
 ## Dataset API
 
 `DailyTalkDataset` transiently exposes raw source records for sampling and
@@ -142,5 +154,5 @@ are implemented. Generic LoRA injection, the core training and validation loop,
 final adapter and AdamW checkpoint serialization, per-example gradient
 collection, AdamW second-moment correction, Qwen LoRA block projection,
 TrackStar Hessian correction, unit normalization, and attribution scoring are
-also implemented. Projected-gradient artifacts, run orchestration, and
-evaluation commands will be added only when their behavior is implemented.
+also implemented, together with named training runs and persisted projected
+training/query pools. LDS evaluation remains to be implemented.

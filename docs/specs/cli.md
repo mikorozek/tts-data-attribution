@@ -1,6 +1,6 @@
 # CLI
 
-Status: **experiment initialization, encoding, training, and gradient projection implemented**
+Status: **experiment initialization, encoding, training, projection, and TrackStar attribution implemented**
 
 ## Command tree
 
@@ -19,11 +19,13 @@ tda
 │   │                        --learning-rate R --epochs N
 │   │                        --batch-size N --seed N [options]
 │   └── start     <experiment> <training-run-name> [--device]
-└── projection
-    ├── init      <experiment> <projection-name>
-    │             --training-run NAME --output-dimension N --seed N
-    └── apply     <experiment> <projection-name>
-                  (--training-pool | --query-pool) [--device]
+├── projection
+│   ├── init      <experiment> <projection-name>
+│   │             --training-run NAME --output-dimension N --seed N
+│   └── apply     <experiment> <projection-name>
+│                 (--training-pool | --query-pool) [--device]
+└── trackstar
+    └── compute   <experiment> <projection-name> --task-weight W [--device]
 ```
 
 ## `tda experiment init`
@@ -175,6 +177,24 @@ trackstar/projections/<projection-name>/projected/
 Each file contains the ordered pool utterance IDs and a float32 matrix shaped
 `[number of pool examples, output dimension]`. Projection application is not
 defined for subset training targets.
+
+## `tda trackstar compute`
+
+`compute` loads the projected training and query pools for one projection and
+forms their task-weighted Gauss–Newton Hessian approximation. It uses
+`torch.linalg.eigh` to construct a pseudoinverse square root, discarding
+eigenvalues below the numerical tolerance. The same correction is applied to
+training and query gradients before row-wise L2 normalization.
+
+The final multiplication produces a matrix shaped
+`[number of training examples, number of query examples]`. The command writes:
+
+```text
+trackstar/projections/<projection-name>/attributions.pt
+```
+
+The file contains `task_weight`, ordered `training_ids`, ordered `query_ids`,
+and the attribution matrix. The task weight is required and has no default.
 
 ## Shared rules
 
