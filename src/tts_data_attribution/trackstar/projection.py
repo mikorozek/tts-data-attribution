@@ -118,6 +118,63 @@ class TwoSidedRandomProjection(RandomProjection):
         self.right_matrices = tuple(right_matrices)
         self.side_size = side_size
 
+    @classmethod
+    def from_matrices(
+        cls,
+        left_matrices: Sequence[torch.Tensor],
+        right_matrices: Sequence[torch.Tensor],
+        *,
+        seed: int,
+        device: torch.device | str,
+        dtype: torch.dtype = torch.float32,
+    ) -> TwoSidedRandomProjection:
+        left_matrices = tuple(left_matrices)
+        right_matrices = tuple(right_matrices)
+        if not left_matrices or len(left_matrices) != len(right_matrices):
+            raise ValueError("two-sided projection matrices must match")
+        if any(
+            left.ndim != 2 or right.ndim != 2
+            for left, right in zip(left_matrices, right_matrices, strict=True)
+        ):
+            raise ValueError("two-sided projection factors must be matrices")
+        side_size = left_matrices[0].shape[0]
+        if side_size < 1 or any(
+            left.shape[0] != side_size or right.shape[0] != side_size
+            for left, right in zip(left_matrices, right_matrices, strict=True)
+        ):
+            raise ValueError("two-sided projection factor dimensions must match")
+        if any(
+            not left.is_floating_point()
+            or not right.is_floating_point()
+            or not torch.isfinite(left).all()
+            or not torch.isfinite(right).all()
+            for left, right in zip(left_matrices, right_matrices, strict=True)
+        ):
+            raise ValueError(
+                "two-sided projection factors must be finite and floating point"
+            )
+
+        instance = cls.__new__(cls)
+        RandomProjection.__init__(
+            instance,
+            tuple(
+                (left.shape[1], right.shape[1])
+                for left, right in zip(left_matrices, right_matrices, strict=True)
+            ),
+            side_size * side_size,
+            seed=seed,
+            device=device,
+            dtype=dtype,
+        )
+        instance.left_matrices = tuple(
+            matrix.to(device=instance.device, dtype=dtype) for matrix in left_matrices
+        )
+        instance.right_matrices = tuple(
+            matrix.to(device=instance.device, dtype=dtype) for matrix in right_matrices
+        )
+        instance.side_size = side_size
+        return instance
+
     def __call__(self, gradients: tuple[torch.Tensor, ...]) -> torch.Tensor:
         gradients = self._prepare(gradients)
         projected = torch.zeros(

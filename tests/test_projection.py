@@ -32,6 +32,27 @@ def test_two_sided_projection_matches_explicit_block_diagonal_matrix() -> None:
     torch.testing.assert_close(projector(gradients), expected)
 
 
+def test_two_sided_projection_loads_saved_matrices() -> None:
+    gradients = (torch.randn(2, 3), torch.randn(4, 2))
+    initialized = TwoSidedRandomProjection(
+        tuple(gradient.shape for gradient in gradients),
+        output_dimension=4,
+        seed=19,
+        device="cpu",
+    )
+
+    loaded = TwoSidedRandomProjection.from_matrices(
+        initialized.left_matrices,
+        initialized.right_matrices,
+        seed=19,
+        device="cpu",
+    )
+
+    assert loaded.input_shapes == initialized.input_shapes
+    assert loaded.output_dimension == initialized.output_dimension
+    torch.testing.assert_close(loaded(gradients), initialized(gradients))
+
+
 def test_two_sided_projection_is_reproducible_and_uses_distinct_maps() -> None:
     gradients = (torch.randn(2, 3), torch.randn(2, 3))
     shapes = tuple(gradient.shape for gradient in gradients)

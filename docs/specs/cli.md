@@ -13,13 +13,16 @@ tda
 │   │                  --subset-count N --subset-size N
 │   │                  --speaker-count N --seed N [--root]
 │   └── encode  <name> [--device] [--batch-size] [--root]
-└── training
-    ├── configure <experiment> --lora-rank N --lora-alpha N
-    │                        --learning-rate R --epochs N
-    │                        --batch-size N --seed N [options]
-    └── start     <experiment>
-                  (--training-pool | --subset ID | --all-training-sets)
-                  [--device]
+├── training
+│   ├── configure <experiment> (--training-pool | --subset ID)
+│   │                        --lora-rank N --lora-alpha N
+│   │                        --learning-rate R --epochs N
+│   │                        --batch-size N --seed N [options]
+│   └── start     <experiment> <training-run-name> [--device]
+└── projection
+    ├── init      <experiment> <projection-name>
+    │             --training-run NAME --output-dimension N --seed N
+    └── apply     <experiment> <projection-name> --training-pool [--device]
 ```
 
 ## `tda experiment init`
@@ -84,49 +87,91 @@ and already stored speaker embeddings.
 
 ## `tda training configure`
 
-`configure` writes one immutable training recipe shared by the training-pool
-checkpoint and every subset checkpoint. It requires an initialized experiment
-and refuses to overwrite an existing `training.yaml`. The command records all
-resolved defaults as well as explicitly provided values.
+`configure` requires exactly one data-selection mode:
 
-A project-level [`training.example.yaml`](../../training.example.yaml) uses the
-same strict schema. It may be copied manually to
-`experiments/<name>/training.yaml`; future training commands validate manually
-created files before loading a model.
+```text
+--training-pool       configure a run on plan.training_pool
+--subset ID           configure a run on the named subset
+```
 
-The initial implementation fixes AdamW, Qwen LoRA target modules, the training
-objective, and final-checkpoint-only serialization. These are not exposed as
-configuration switches until an experiment requires alternatives.
+It creates an immutable run named `<set>-<UTC timestamp>` under
+`experiments/<name>/training-runs/`. The generated `manifest.yaml` records the
+selected set, dtype, LoRA configuration, AdamW configuration, epochs, batch
+size, and seed. Resolved defaults are persisted alongside explicitly provided
+values.
+
+A project-level
+[`training-run.example.yaml`](../../training-run.example.yaml) demonstrates the
+same strict schema. Configure another named run to change the recipe or train a
+different subset.
 
 ## `tda training start`
 
-`start` requires exactly one data-selection mode:
+`start` receives the generated run name rather than another data-selection
+flag:
 
-```text
---training-pool       train one checkpoint on plan.training_pool
---subset ID           train one checkpoint on the named subset
---all-training-sets   train the training pool and every named subset
+```bash
+tda training start EXPERIMENT TRAINING_RUN_NAME --device cuda:0
 ```
 
-Subset names are stable keys such as `subset-0007` in `plan.json`. Checkpoints
-are written to:
+The selected training set and complete recipe come from the run manifest. A run
+workspace has the following shape:
 
 ```text
-experiments/<name>/checkpoints/
-├── training-pool/
-└── subsets/<subset-id>/
+experiments/<name>/training-runs/<run-name>/
+├── manifest.yaml
+├── metrics.jsonl
+└── target/
+    ├── adapter/
+    ├── optimizer.pt
+    └── metadata.json
 ```
 
-Single-run modes refuse to replace an existing checkpoint. The all-training-sets
-mode skips complete checkpoints so an interrupted collection can be continued,
-but rejects incomplete checkpoint directories. Each selected training set gets
-a newly loaded base model, identically seeded LoRA initialization, fresh AdamW
-state, and the shared validation pool. Epoch metrics and checkpoint events are
-written as JSON lines to stdout.
+Epoch metrics are appended to `metrics.jsonl` and written as JSON lines to
+stdout. `target/` is created atomically only after successful completion and
+contains the one final adapter and matching optimizer state. A run with metrics
+or a target cannot be started again; configure a new run instead.
 
 All experiment files and the selected device are validated before the model is
-loaded. Training reads the model path from `manifest.yaml` and all recipe values
-from `training.yaml`; the command exposes no recipe overrides.
+loaded. The command reads the base model from the experiment manifest and all
+training choices from the immutable run manifest.
+
+## `tda projection init`
+
+`init` reads the exact ordered LoRA parameter layout from a completed
+training-pool run target. It creates an independent two-sided random map for
+every trainable parameter matrix and stores the immutable artifact at:
+
+```text
+experiments/<name>/trackstar/projections/<projection-name>/
+├── manifest.yaml
+└── matrices.pt
+```
+
+The manifest records the projection type, associated training run, output
+dimension, seed, and ordered parameter names and shapes. `matrices.pt` stores
+all left and right matrices on CPU in float32. The output dimension must be a
+positive square. The command does not load model weights, optimizer state,
+encoded data, or gradients and never replaces an existing projection.
+
+## `tda projection apply`
+
+`apply --training-pool` reloads the final adapter and matching AdamW state from
+the training run named in the projection manifest. It validates the ordered
+trainable parameter layout, evaluates the per-example objective in model eval
+mode, corrects every gradient with the saved AdamW second moment, and applies
+the saved two-sided matrices.
+
+The result is stored at:
+
+```text
+trackstar/projections/<projection-name>/projected/training-pool.pt
+```
+
+It contains the ordered training-pool utterance IDs and a float32 matrix shaped
+`[number of training examples, output dimension]`. Projection application is
+not defined for subset training targets. Query-set application will be added
+with named query-set encoding.
 
 ## Shared rules
 

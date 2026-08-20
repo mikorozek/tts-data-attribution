@@ -68,30 +68,53 @@ The Qwen model recorded in the manifest supplies the text processor, bundled
 `speaker_embeddings.pt` for the reference utterances. It appends complete
 batches and skips already encoded IDs when resumed.
 
-Configure the immutable training recipe separately:
+Configure one immutable, named training run for a selected training set:
 
 ```bash
-uv run tda training configure voice-study-1 \
+uv run tda training configure voice-study-1 --training-pool \
   --lora-rank 8 --lora-alpha 16 \
   --learning-rate 2e-5 --epochs 3 --batch-size 1 --seed 5678
 ```
 
-This writes `training.yaml` inside the experiment directory and refuses to
-overwrite an existing recipe. Alternatively, copy
-[`training.example.yaml`](training.example.yaml) into the experiment directory
-and edit it using the same validated schema.
+The command creates `training-runs/<set>-<UTC timestamp>/manifest.yaml` and
+prints the generated run name. The strict schema is also shown in
+[`training-run.example.yaml`](training-run.example.yaml). Configure a separate
+run with `--subset subset-0007` to train on a named LDS subset.
 
-Start one training run or all runs required for LDS:
+Start the configured run by its generated name:
 
 ```bash
-uv run tda training start voice-study-1 --training-pool --device cuda:0
-uv run tda training start voice-study-1 --subset subset-0007 --device cuda:0
-uv run tda training start voice-study-1 --all-training-sets --device cuda:0
+uv run tda training start voice-study-1 \
+  training-pool-20260820T153012123456Z --device cuda:0
 ```
 
-Exactly one data-selection flag is required. The last form trains the full
-training pool and every named subset, skipping complete checkpoints when it is
-resumed.
+Epoch metrics are appended to `metrics.jsonl`. A successful run writes its one
+final adapter and optimizer state atomically under `target/`.
+
+Initialize a reusable two-sided projection from the ordered LoRA parameter
+layout recorded by a completed training-pool target:
+
+```bash
+uv run tda projection init voice-study-1 two-sided-4096 \
+  --training-run training-pool-20260820T153012123456Z \
+  --output-dimension 4096 --seed 1234
+```
+
+The command stores an immutable manifest and the random left and right matrices
+under `trackstar/projections/<projection-name>/`. It does not load the model or
+compute gradients.
+
+Apply the saved projection to every example in the training pool associated
+with its training run:
+
+```bash
+uv run tda projection apply voice-study-1 two-sided-4096 \
+  --training-pool --device cuda:0
+```
+
+The command reloads the final adapter and matching AdamW state, computes and
+corrects each per-example gradient, and writes `projected/training-pool.pt`.
+Subset training targets are never projected.
 
 ## Dataset API
 

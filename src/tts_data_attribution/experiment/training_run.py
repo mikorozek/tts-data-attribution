@@ -28,7 +28,8 @@ def _number(value: Any, name: str) -> float:
 
 
 @dataclass(frozen=True)
-class TrainingConfig:
+class TrainingRunManifest:
+    training_set: str
     dtype: str
     lora_rank: int
     lora_alpha: int
@@ -42,6 +43,8 @@ class TrainingConfig:
     seed: int
 
     def __post_init__(self) -> None:
+        if not self.training_set:
+            raise ValueError("training set must not be empty")
         if self.dtype not in {"bfloat16", "float32"}:
             raise ValueError("dtype must be bfloat16 or float32")
         if self.lora_rank < 1:
@@ -69,8 +72,14 @@ class TrainingConfig:
     def from_yaml(cls, path: str | Path) -> Self:
         values = _require_keys(
             yaml.safe_load(Path(path).read_text(encoding="utf-8")),
-            {"dtype", "lora", "adamw", "training"},
-            "training config",
+            {
+                "training_set",
+                "dtype",
+                "lora",
+                "adamw",
+                "training",
+            },
+            "training run manifest",
         )
         lora = _require_keys(values["lora"], {"rank", "alpha", "dropout"}, "lora")
         adamw = _require_keys(
@@ -86,7 +95,11 @@ class TrainingConfig:
         betas = adamw["betas"]
         if not isinstance(betas, list) or len(betas) != 2:
             raise ValueError("adamw betas must contain exactly two values")
+        training_set = values["training_set"]
+        if not isinstance(training_set, str):
+            raise ValueError("training set must be a string")
         return cls(
+            training_set=training_set,
             dtype=str(values["dtype"]),
             lora_rank=_integer(lora["rank"], "lora rank"),
             lora_alpha=_integer(lora["alpha"], "lora alpha"),
@@ -105,6 +118,7 @@ class TrainingConfig:
 
     def to_yaml(self, path: str | Path) -> None:
         values = {
+            "training_set": self.training_set,
             "dtype": self.dtype,
             "lora": {
                 "rank": self.lora_rank,

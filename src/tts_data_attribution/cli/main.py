@@ -4,7 +4,7 @@ import argparse
 import sys
 from collections.abc import Sequence
 
-from . import experiment, training
+from . import experiment, projection, training
 from .errors import CommandError
 
 
@@ -15,6 +15,7 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(required=True)
     experiment.register(subparsers)
     training.register(subparsers)
+    projection.register(subparsers)
     return parser
 
 
