@@ -54,6 +54,11 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         action="store_true",
         help="project the complete training pool",
     )
+    selection.add_argument(
+        "--query-pool",
+        action="store_true",
+        help="project the experiment query pool",
+    )
     apply_parser.add_argument(
         "--device",
         default="cuda:0",
@@ -146,6 +151,7 @@ def run_init(arguments: argparse.Namespace) -> None:
 
 def run_apply(arguments: argparse.Namespace) -> None:
     _require_flat_name(arguments.projection_name, "projection name")
+    collection_name = "training-pool" if arguments.training_pool else "query-pool"
     experiment_directory = Path("experiments") / arguments.experiment_name
     projection_directory = (
         experiment_directory
@@ -155,11 +161,13 @@ def run_apply(arguments: argparse.Namespace) -> None:
     )
     projection_manifest_path = projection_directory / "manifest.yaml"
     matrices_path = projection_directory / "matrices.pt"
-    output_path = projection_directory / "projected" / "training-pool.pt"
+    output_path = projection_directory / "projected" / f"{collection_name}.pt"
     if not projection_manifest_path.is_file() or not matrices_path.is_file():
         raise CommandError(f"projection {arguments.projection_name} is incomplete")
     if output_path.exists():
-        raise CommandError(f"projected training pool already exists at {output_path}")
+        raise CommandError(
+            f"projected {collection_name} already exists at {output_path}"
+        )
 
     try:
         projection_manifest = yaml.safe_load(
@@ -254,15 +262,17 @@ def run_apply(arguments: argparse.Namespace) -> None:
         for name, embedding in speaker_embeddings.items()
     ):
         raise CommandError("speaker embeddings must map speaker names to tensors")
-    if not plan.training_pool:
-        raise CommandError("training pool must not be empty")
-    missing_ids = sorted(set(plan.training_pool) - encoded.ids())
+    identifiers = (
+        plan.training_pool if arguments.training_pool else plan.query_pool
+    )
+    if not identifiers:
+        raise CommandError(f"{collection_name} must not be empty")
+    missing_ids = sorted(set(identifiers) - encoded.ids())
     if missing_ids:
         raise CommandError(f"encoded utterances missing for: {missing_ids}")
-    training_utterances = encoded.get_utterances_by_ids(plan.training_pool)
+    utterances = encoded.get_utterances_by_ids(identifiers)
     missing_speakers = sorted(
-        {utterance.speaker for utterance in training_utterances}
-        - set(speaker_embeddings)
+        {utterance.speaker for utterance in utterances} - set(speaker_embeddings)
     )
     if missing_speakers:
         raise CommandError(f"speaker embeddings missing for: {missing_speakers}")
@@ -317,7 +327,7 @@ def run_apply(arguments: argparse.Namespace) -> None:
     except (KeyError, OSError, RuntimeError, TypeError, ValueError) as error:
         raise CommandError(f"cannot load training target: {error}") from error
 
-    dataset = UtteranceDataset(training_utterances)
+    dataset = UtteranceDataset(utterances)
     data_loader = DataLoader(
         dataset,
         batch_size=training_run.batch_size,
@@ -340,24 +350,28 @@ def run_apply(arguments: argparse.Namespace) -> None:
                 projected_gradients.append(projector(corrected).cpu())
             completed += losses.shape[0]
             print(
-                f"projected {completed}/{len(dataset)} training examples",
+                f"projected {completed}/{len(dataset)} {collection_name} examples",
                 flush=True,
             )
     except (RuntimeError, TypeError, ValueError) as error:
-        raise CommandError(f"cannot project training gradients: {error}") from error
+        raise CommandError(
+            f"cannot project {collection_name} gradients: {error}"
+        ) from error
 
     if len(projected_gradients) != len(dataset):
-        raise CommandError("projected gradient count differs from the training pool")
+        raise CommandError(
+            f"projected gradient count differs from the {collection_name}"
+        )
 
     try:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         torch.save(
             {
-                "ids": list(plan.training_pool),
+                "ids": list(identifiers),
                 "projected_gradients": torch.stack(projected_gradients),
             },
             output_path,
         )
     except (OSError, RuntimeError) as error:
         raise CommandError(f"cannot save projected gradients: {error}") from error
-    print(f"projected training gradients saved at {output_path}")
+    print(f"projected {collection_name} gradients saved at {output_path}")

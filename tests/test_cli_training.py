@@ -67,6 +67,7 @@ def create_initialized_experiment(root: Path) -> tuple[Path, Plan]:
         references={"speaker": "reference"},
         training_pool=["train-0", "train-1"],
         validation_pool=["validation-0"],
+        query_pool=[],
         subsets={
             "subset-0000": ["train-0"],
             "subset-0001": ["train-1"],
@@ -88,6 +89,7 @@ def create_ready_experiment(
         model_path=Path("model"),
         training_pool_size=2,
         validation_pool_size=1,
+        query_pool_size=0,
         subset_count=2,
         subset_size=1,
         speaker_count=1,

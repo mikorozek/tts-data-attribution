@@ -30,6 +30,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     init_parser.add_argument("--model-path", type=Path, required=True)
     init_parser.add_argument("--training-pool-size", type=int, required=True)
     init_parser.add_argument("--validation-pool-size", type=int, required=True)
+    init_parser.add_argument("--query-pool-size", type=int, required=True)
     init_parser.add_argument("--subset-count", type=int, required=True)
     init_parser.add_argument("--subset-size", type=int, required=True)
     init_parser.add_argument("--speaker-count", type=int, required=True)
@@ -59,6 +60,7 @@ def run_init(arguments: argparse.Namespace) -> None:
         model_path=arguments.model_path,
         training_pool_size=arguments.training_pool_size,
         validation_pool_size=arguments.validation_pool_size,
+        query_pool_size=arguments.query_pool_size,
         subset_count=arguments.subset_count,
         subset_size=arguments.subset_size,
         speaker_count=arguments.speaker_count,
@@ -98,7 +100,7 @@ def run_encode(arguments: argparse.Namespace) -> None:
             f"cannot read experiment {arguments.name}: {error}"
         ) from error
     dataset = load_dataset(manifest)
-    selected_ids = plan.training_pool + plan.validation_pool
+    selected_ids = plan.training_pool + plan.validation_pool + plan.query_pool
     required_ids = selected_ids + list(plan.references.values())
     try:
         dataset.get_records_by_ids(required_ids)

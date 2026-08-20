@@ -45,6 +45,7 @@ class Plan:
     references: dict[str, str]
     training_pool: list[str]
     validation_pool: list[str]
+    query_pool: list[str]
     subsets: dict[str, list[str]]
 
     def __post_init__(self) -> None:
@@ -56,6 +57,7 @@ class Plan:
         for name, identifiers in (
             ("training_pool", self.training_pool),
             ("validation_pool", self.validation_pool),
+            ("query_pool", self.query_pool),
         ):
             if not isinstance(identifiers, list) or not all(
                 isinstance(identifier, str) for identifier in identifiers
@@ -63,8 +65,12 @@ class Plan:
                 raise ValueError(f"{name} must be a list of utterance IDs")
             if len(identifiers) != len(set(identifiers)):
                 raise ValueError(f"{name} utterance IDs must be unique")
-        if set(self.training_pool) & set(self.validation_pool):
-            raise ValueError("training and validation pools must be disjoint")
+        pools = [self.training_pool, self.validation_pool, self.query_pool]
+        for index, identifiers in enumerate(pools):
+            if any(set(identifiers) & set(other) for other in pools[index + 1 :]):
+                raise ValueError(
+                    "training, validation, and query pools must be disjoint"
+                )
         if not isinstance(self.subsets, dict):
             raise ValueError("subsets must map names to utterance ID lists")
         expected_subset_names = {
@@ -133,6 +139,17 @@ class Plan:
             for utterance in candidates
             if utterance.dialogue not in validation_dialogues
         ]
+        query_pool, query_dialogues = _sample_dialogue_disjoint_pool(
+            rng,
+            candidates,
+            manifest.query_pool_size,
+            "query_pool",
+        )
+        candidates = [
+            utterance
+            for utterance in candidates
+            if utterance.dialogue not in query_dialogues
+        ]
         training_pool, _ = _sample_dialogue_disjoint_pool(
             rng,
             candidates,
@@ -149,6 +166,7 @@ class Plan:
             references=references,
             training_pool=training_pool,
             validation_pool=validation_pool,
+            query_pool=query_pool,
             subsets=subsets,
         )
 

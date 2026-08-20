@@ -24,6 +24,8 @@ def test_parser_maps_experiment_commands() -> None:
             "8",
             "--validation-pool-size",
             "2",
+            "--query-pool-size",
+            "2",
             "--subset-count",
             "3",
             "--subset-size",

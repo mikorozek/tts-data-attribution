@@ -50,12 +50,12 @@ uv run tda experiment init voice-study-1 \
   --model qwen3-tts \
   --model-path artifacts/models/Qwen3-TTS-12Hz-1.7B-Base-fd4b254 \
   --training-pool-size 2000 --validation-pool-size 200 \
-  --subset-count 50 --subset-size 1000 \
+  --query-pool-size 200 --subset-count 50 --subset-size 1000 \
   --speaker-count 2 --seed 1234
 ```
 
 This writes `manifest.yaml` and the deterministic `plan.json`. Encode the
-training and validation utterances in a separate, explicit step:
+training, validation, and query utterances in a separate, explicit step:
 
 ```bash
 uv run tda experiment encode voice-study-1 \
@@ -64,7 +64,7 @@ uv run tda experiment encode voice-study-1 \
 
 The Qwen model recorded in the manifest supplies the text processor, bundled
 12 Hz speech tokenizer, and speaker encoder. The command writes
-`sampled_utterances_encoded.jsonl` for the training and validation pools and
+`sampled_utterances_encoded.jsonl` for the training, validation, and query pools and
 `speaker_embeddings.pt` for the reference utterances. It appends complete
 batches and skips already encoded IDs when resumed.
 
@@ -114,7 +114,8 @@ uv run tda projection apply voice-study-1 two-sided-4096 \
 
 The command reloads the final adapter and matching AdamW state, computes and
 corrects each per-example gradient, and writes `projected/training-pool.pt`.
-Subset training targets are never projected.
+Apply the same model, optimizer state, and projection to the experiment query
+pool with `--query-pool`; subset training targets are never projected.
 
 ## Dataset API
 

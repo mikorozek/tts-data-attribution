@@ -1,6 +1,6 @@
 # CLI
 
-Status: **experiment initialization, encoding, and training implemented; query commands planned**
+Status: **experiment initialization, encoding, training, and gradient projection implemented**
 
 ## Command tree
 
@@ -10,7 +10,7 @@ tda
 │   ├── init    <name> --dataset <dataset> --data-root <dir>
 │   │                  --model <model> --model-path <dir>
 │   │                  --training-pool-size N --validation-pool-size N
-│   │                  --subset-count N --subset-size N
+│   │                  --query-pool-size N --subset-count N --subset-size N
 │   │                  --speaker-count N --seed N [--root]
 │   └── encode  <name> [--device] [--batch-size] [--root]
 ├── training
@@ -22,7 +22,8 @@ tda
 └── projection
     ├── init      <experiment> <projection-name>
     │             --training-run NAME --output-dimension N --seed N
-    └── apply     <experiment> <projection-name> --training-pool [--device]
+    └── apply     <experiment> <projection-name>
+                  (--training-pool | --query-pool) [--device]
 ```
 
 ## `tda experiment init`
@@ -45,6 +46,7 @@ data_root: data/raw/dailytalk
 dataset: dailytalk
 model: qwen3-tts
 model_path: artifacts/models/Qwen3-TTS-12Hz-1.7B-Base-fd4b254
+query_pool_size: 200
 seed: 1234
 speaker_count: 2
 subset_count: 50
@@ -53,10 +55,9 @@ training_pool_size: 2000
 validation_pool_size: 200
 ```
 
-`plan.json` records reference utterances, training and validation pools, and
-training subsets. These selections are disjoint at dialogue level. The same
-manifest produces the same byte-stable plan. Query sets are sampled later and
-are not part of the initial plan.
+`plan.json` records reference utterances, training, validation, and query
+pools, and training subsets. These selections are disjoint at dialogue level.
+The same manifest produces the same byte-stable plan.
 
 ## `tda experiment encode`
 
@@ -77,8 +78,8 @@ experiments/<name>/
 └── speaker_embeddings.pt
 ```
 
-`sampled_utterances_encoded.jsonl` contains only training and validation
-utterances. Reference audio is converted only into entries in
+`sampled_utterances_encoded.jsonl` contains the training, validation, and query
+pools. Reference audio is converted only into entries in
 `speaker_embeddings.pt`; reference utterances are not materialized as text and
 codec-token records.
 
@@ -156,7 +157,8 @@ encoded data, or gradients and never replaces an existing projection.
 
 ## `tda projection apply`
 
-`apply --training-pool` reloads the final adapter and matching AdamW state from
+`apply --training-pool` or `apply --query-pool` reloads the final adapter and
+matching AdamW state from
 the training run named in the projection manifest. It validates the ordered
 trainable parameter layout, evaluates the per-example objective in model eval
 mode, corrects every gradient with the saved AdamW second moment, and applies
@@ -165,13 +167,14 @@ the saved two-sided matrices.
 The result is stored at:
 
 ```text
-trackstar/projections/<projection-name>/projected/training-pool.pt
+trackstar/projections/<projection-name>/projected/
+├── training-pool.pt
+└── query-pool.pt
 ```
 
-It contains the ordered training-pool utterance IDs and a float32 matrix shaped
-`[number of training examples, output dimension]`. Projection application is
-not defined for subset training targets. Query-set application will be added
-with named query-set encoding.
+Each file contains the ordered pool utterance IDs and a float32 matrix shaped
+`[number of pool examples, output dimension]`. Projection application is not
+defined for subset training targets.
 
 ## Shared rules
 

@@ -15,6 +15,7 @@ def manifest() -> ExperimentManifest:
         model_path=Path("artifacts/qwen3-tts"),
         training_pool_size=2000,
         validation_pool_size=200,
+        query_pool_size=100,
         subset_count=50,
         subset_size=1000,
         speaker_count=2,
@@ -33,6 +34,7 @@ def test_manifest_round_trips_through_yaml(tmp_path: Path) -> None:
         "dataset: dailytalk\n"
         "model: qwen3-tts\n"
         "model_path: artifacts/qwen3-tts\n"
+        "query_pool_size: 100\n"
         "seed: 1234\n"
         "speaker_count: 2\n"
         "subset_count: 50\n"

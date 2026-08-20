@@ -49,6 +49,7 @@ def create_training_target(
         model_path=Path("model"),
         training_pool_size=2,
         validation_pool_size=0,
+        query_pool_size=1,
         subset_count=1,
         subset_size=1,
         speaker_count=1,
@@ -58,6 +59,7 @@ def create_training_target(
         references={"speaker": "reference"},
         training_pool=["train-0", "train-1"],
         validation_pool=[],
+        query_pool=["query-0"],
         subsets={"subset-0000": ["train-0"]},
     )
     plan.to_json(experiment / "plan.json")
@@ -70,7 +72,7 @@ def create_training_target(
                 text_ids=[1],
                 audio_codes=[[2] * 16],
             )
-            for identifier in plan.training_pool
+            for identifier in [*plan.training_pool, *plan.query_pool]
         ]
     ).to_jsonl(experiment / "sampled_utterances_encoded.jsonl")
     torch.save({"speaker": torch.ones(4)}, experiment / "speaker_embeddings.pt")
@@ -175,9 +177,19 @@ def test_projection_init_saves_the_parameter_layout_and_random_matrices(
         torch.testing.assert_close(actual, expected_matrix)
 
 
-def test_projection_apply_projects_the_training_pool(
+@pytest.mark.parametrize(
+    ("selection", "filename", "identifiers"),
+    [
+        ("--training-pool", "training-pool.pt", ["train-0", "train-1"]),
+        ("--query-pool", "query-pool.pt", ["query-0"]),
+    ],
+)
+def test_projection_apply_projects_an_experiment_pool(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    selection: str,
+    filename: str,
+    identifiers: list[str],
 ) -> None:
     monkeypatch.chdir(tmp_path)
     experiment, _ = create_training_target(tmp_path)
@@ -231,7 +243,7 @@ def test_projection_apply_projects_the_training_pool(
                 "apply",
                 "study",
                 "two-sided-4",
-                "--training-pool",
+                selection,
                 "--device",
                 "cpu",
             ]
@@ -245,11 +257,11 @@ def test_projection_apply_projects_the_training_pool(
         / "projections"
         / "two-sided-4"
         / "projected"
-        / "training-pool.pt",
+        / filename,
         weights_only=True,
     )
-    assert output["ids"] == ["train-0", "train-1"]
-    assert output["projected_gradients"].shape == (2, 4)
+    assert output["ids"] == identifiers
+    assert output["projected_gradients"].shape == (len(identifiers), 4)
     assert torch.isfinite(output["projected_gradients"]).all()
 
 

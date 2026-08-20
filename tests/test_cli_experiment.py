@@ -106,7 +106,7 @@ def workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
                 audio_path=f"data/{speaker}-{index}.wav",
             )
             for speaker in ("0", "1")
-            for index in range(8)
+            for index in range(12)
         ]
     )
     monkeypatch.setitem(DATASETS, "dailytalk", lambda root: dataset)
@@ -135,6 +135,8 @@ def init_arguments(root: Path, name: str = "study") -> list[str]:
         "--training-pool-size",
         "8",
         "--validation-pool-size",
+        "2",
+        "--query-pool-size",
         "2",
         "--subset-count",
         "3",
@@ -175,6 +177,7 @@ def test_init_only_writes_the_manifest_and_plan(workspace: Path) -> None:
         model_path=workspace / "model",
         training_pool_size=8,
         validation_pool_size=2,
+        query_pool_size=2,
         subset_count=3,
         subset_size=4,
         speaker_count=2,
@@ -197,7 +200,9 @@ def test_encode_writes_only_the_sampled_utterances_and_speakers(
 
     directory = workspace / "experiments/study"
     plan = Plan.from_json(directory / "plan.json")
-    selected_ids = set(plan.training_pool) | set(plan.validation_pool)
+    selected_ids = (
+        set(plan.training_pool) | set(plan.validation_pool) | set(plan.query_pool)
+    )
     encoded = UtteranceDataset.from_jsonl(
         directory / "sampled_utterances_encoded.jsonl"
     )
@@ -299,10 +304,10 @@ def test_init_fails_cleanly_when_the_sampling_does_not_fit(
     workspace: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     arguments = init_arguments(workspace)
-    arguments[arguments.index("--training-pool-size") + 1] = "11"
+    arguments[arguments.index("--training-pool-size") + 1] = "25"
 
     assert main(arguments) == 1
-    assert "training_pool_size 11 exceeds" in capsys.readouterr().err
+    assert "training_pool_size 25 exceeds" in capsys.readouterr().err
     assert FakeExperimentEncoder.loaded == []
 
 
@@ -352,6 +357,8 @@ def test_init_uses_dataset_specific_layout_validation(
                 "--training-pool-size",
                 "2",
                 "--validation-pool-size",
+                "0",
+                "--query-pool-size",
                 "0",
                 "--subset-count",
                 "1",
