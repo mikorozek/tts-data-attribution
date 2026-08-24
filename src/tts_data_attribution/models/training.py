@@ -45,6 +45,7 @@ def evaluate(
 def train(
     model: ModelType,
     training_loader: Iterable[Batch],
+    training_evaluation_loader: Iterable[Batch],
     validation_loader: Iterable[Batch],
     optimizer: torch.optim.Optimizer,
     objective: Objective[ModelType],
@@ -52,7 +53,21 @@ def train(
     device: torch.device | str,
     epoch_callback: Callable[[dict[str, int | float]], None] | None = None,
 ) -> list[dict[str, int | float]]:
-    history = []
+    initial_metrics: dict[str, int | float] = {
+        "epoch": 0,
+        "step": 0,
+        "training_loss": evaluate(
+            model,
+            training_evaluation_loader,
+            objective,
+            device,
+        ),
+        "validation_loss": evaluate(model, validation_loader, objective, device),
+    }
+    history = [initial_metrics]
+    if epoch_callback is not None:
+        epoch_callback(initial_metrics)
+
     step = 0
     for epoch in range(1, epochs + 1):
         model.train()
@@ -72,7 +87,13 @@ def train(
         metrics: dict[str, int | float] = {
             "epoch": epoch,
             "step": step,
-            "training_loss": total_loss / example_count,
+            "optimization_loss": total_loss / example_count,
+            "training_loss": evaluate(
+                model,
+                training_evaluation_loader,
+                objective,
+                device,
+            ),
             "validation_loss": evaluate(model, validation_loader, objective, device),
         }
         history.append(metrics)

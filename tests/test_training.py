@@ -44,6 +44,7 @@ def test_train_uses_the_supplied_per_example_objective() -> None:
     history = train(
         model,
         batches,
+        batches,
         batches[:1],
         optimizer,
         squared_error,
@@ -53,8 +54,9 @@ def test_train_uses_the_supplied_per_example_objective() -> None:
     )
 
     assert reported == history
-    assert [metrics["epoch"] for metrics in history] == [1, 2]
-    assert [metrics["step"] for metrics in history] == [2, 4]
+    assert [metrics["epoch"] for metrics in history] == [0, 1, 2]
+    assert [metrics["step"] for metrics in history] == [0, 2, 4]
+    assert history[0]["training_loss"] > history[-1]["training_loss"]
     assert all(
         torch.isfinite(torch.tensor(value))
         for metrics in history

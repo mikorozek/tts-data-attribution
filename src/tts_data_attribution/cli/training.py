@@ -205,6 +205,12 @@ def run_start(arguments: argparse.Namespace) -> None:
         generator=torch.Generator().manual_seed(config.seed),
         collate_fn=lambda utterances: collate(utterances, speaker_embeddings),
     )
+    training_evaluation_loader = DataLoader(
+        training_dataset,
+        batch_size=config.batch_size,
+        shuffle=False,
+        collate_fn=lambda utterances: collate(utterances, speaker_embeddings),
+    )
     validation_loader = DataLoader(
         validation_dataset,
         batch_size=config.batch_size,
@@ -244,7 +250,23 @@ def run_start(arguments: argparse.Namespace) -> None:
         weight_decay=config.weight_decay,
     )
 
+    best_checkpoint_path = training_run_directory / "best-checkpoint.json"
+    best_validation_loss = float("inf")
+
+    def write_checkpoint_context(
+        checkpoint: Path,
+        metrics: dict[str, int | float],
+    ) -> None:
+        (checkpoint / "training-run.yaml").write_bytes(
+            paths["training run manifest"].read_bytes()
+        )
+        (checkpoint / "metrics.json").write_text(
+            json.dumps(metrics, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+
     def report_epoch(metrics: dict[str, int | float]) -> None:
+        nonlocal best_validation_loss
         with metrics_path.open("a", encoding="utf-8") as output:
             output.write(json.dumps(metrics, sort_keys=True) + "\n")
         print(
@@ -254,10 +276,40 @@ def run_start(arguments: argparse.Namespace) -> None:
             ),
             flush=True,
         )
+        epoch = int(metrics["epoch"])
+        if epoch == 0:
+            return
+        checkpoint = training_run_directory / "checkpoints" / f"epoch-{epoch:04d}"
+        save_lora_checkpoint(
+            checkpoint,
+            cast(PeftModel, model.talker),
+            optimizer,
+            epoch=epoch,
+            step=int(metrics["step"]),
+        )
+        write_checkpoint_context(checkpoint, metrics)
+        validation_loss = float(metrics["validation_loss"])
+        if validation_loss < best_validation_loss:
+            best_validation_loss = validation_loss
+            best_checkpoint_path.write_text(
+                json.dumps(
+                    {
+                        "checkpoint": str(
+                            checkpoint.relative_to(training_run_directory)
+                        ),
+                        **metrics,
+                    },
+                    indent=2,
+                    sort_keys=True,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
 
     history = train(
         model,
         training_loader,
+        training_evaluation_loader,
         validation_loader,
         optimizer,
         objective,
@@ -272,4 +324,5 @@ def run_start(arguments: argparse.Namespace) -> None:
         epoch=config.epochs,
         step=int(history[-1]["step"]),
     )
+    write_checkpoint_context(target, history[-1])
     print(f"training target saved at {target}")

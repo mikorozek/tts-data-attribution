@@ -143,7 +143,7 @@ def install_fake_training(
             "training_loss": 1.0,
             "validation_loss": 2.0,
         }
-        callback = args[7]
+        callback = args[8]
         callback(metrics)
         return [metrics]
 
@@ -259,13 +259,27 @@ def test_training_start_uses_the_configured_set_and_writes_the_target(
     assert main(["training", "start", "study", run_name, "--device", "cpu"]) == 0
 
     run_directory = directory / "training-runs" / run_name
-    assert trained_ids == [plan.training_pool]
-    assert targets == [Path("experiments/study/training-runs") / run_name / "target"]
-    assert json.loads((run_directory / "metrics.jsonl").read_text()) == {
+    relative_run = Path("experiments/study/training-runs") / run_name
+    checkpoint = run_directory / "checkpoints" / "epoch-0003"
+    expected_metrics = {
         "epoch": 3,
         "step": 6,
         "training_loss": 1.0,
         "validation_loss": 2.0,
+    }
+    assert trained_ids == [plan.training_pool]
+    assert targets == [
+        relative_run / "checkpoints" / "epoch-0003",
+        relative_run / "target",
+    ]
+    assert json.loads((run_directory / "metrics.jsonl").read_text()) == expected_metrics
+    assert json.loads((checkpoint / "metrics.json").read_text()) == expected_metrics
+    assert (checkpoint / "training-run.yaml").read_bytes() == (
+        run_directory / "manifest.yaml"
+    ).read_bytes()
+    assert json.loads((run_directory / "best-checkpoint.json").read_text()) == {
+        "checkpoint": "checkpoints/epoch-0003",
+        **expected_metrics,
     }
 
 
@@ -280,7 +294,11 @@ def test_training_start_uses_a_configured_subset(
     assert main(["training", "start", "study", run_name, "--device", "cpu"]) == 0
 
     assert trained_ids == [plan.subsets["subset-0001"]]
-    assert targets == [Path("experiments/study/training-runs") / run_name / "target"]
+    relative_run = Path("experiments/study/training-runs") / run_name
+    assert targets == [
+        relative_run / "checkpoints" / "epoch-0003",
+        relative_run / "target",
+    ]
 
 
 def test_training_start_refuses_an_existing_target(

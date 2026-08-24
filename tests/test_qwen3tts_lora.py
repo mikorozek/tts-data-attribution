@@ -185,8 +185,18 @@ def test_train_processes_every_batch_and_evaluates_without_gradients(
     model = tiny_lora_model()
     speaker_embeddings = {"speaker-a": torch.randn(16)}
     collate_batch = partial(collate, speaker_embeddings=speaker_embeddings)
+    training_utterances = [
+        utterance("a", 0),
+        utterance("b", 1),
+        utterance("c", 2),
+    ]
     training_loader = DataLoader(
-        [utterance("a", 0), utterance("b", 1), utterance("c", 2)],
+        training_utterances,
+        batch_size=2,
+        collate_fn=collate_batch,
+    )
+    training_evaluation_loader = DataLoader(
+        training_utterances,
         batch_size=2,
         collate_fn=collate_batch,
     )
@@ -221,6 +231,7 @@ def test_train_processes_every_batch_and_evaluates_without_gradients(
     history = train(
         model,
         training_loader,
+        training_evaluation_loader,
         validation_loader,
         optimizer,
         objective,
@@ -230,9 +241,12 @@ def test_train_processes_every_batch_and_evaluates_without_gradients(
     )
 
     assert reported_metrics == history
-    assert len(history) == 2
-    assert [metrics["epoch"] for metrics in history] == [1, 2]
-    assert [metrics["step"] for metrics in history] == [2, 4]
+    assert len(history) == 3
+    assert [metrics["epoch"] for metrics in history] == [0, 1, 2]
+    assert [metrics["step"] for metrics in history] == [0, 2, 4]
+    assert history[0]["training_loss"] > history[-1]["training_loss"]
+    assert "optimization_loss" not in history[0]
+    assert all("optimization_loss" in metrics for metrics in history[1:])
     assert all(
         torch.isfinite(torch.tensor(value))
         for metrics in history
