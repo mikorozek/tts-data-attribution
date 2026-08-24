@@ -16,6 +16,22 @@ LORA_TARGET_MODULES = (
     "gate_proj",
     "up_proj",
     "down_proj",
+    "codec_head",
+    "code_predictor.lm_head.0",
+    "code_predictor.lm_head.1",
+    "code_predictor.lm_head.2",
+    "code_predictor.lm_head.3",
+    "code_predictor.lm_head.4",
+    "code_predictor.lm_head.5",
+    "code_predictor.lm_head.6",
+    "code_predictor.lm_head.7",
+    "code_predictor.lm_head.8",
+    "code_predictor.lm_head.9",
+    "code_predictor.lm_head.10",
+    "code_predictor.lm_head.11",
+    "code_predictor.lm_head.12",
+    "code_predictor.lm_head.13",
+    "code_predictor.lm_head.14",
 )
 
 

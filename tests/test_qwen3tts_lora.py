@@ -22,7 +22,11 @@ from tts_data_attribution.models import (
     save_lora_checkpoint,
     train,
 )
-from tts_data_attribution.models.qwen3_tts import collate, objective
+from tts_data_attribution.models.qwen3_tts import (
+    LORA_TARGET_MODULES,
+    collate,
+    objective,
+)
 from tts_data_attribution.trackstar import (
     GaussNewtonHessianApproximation,
     TwoSidedRandomProjection,
@@ -94,15 +98,7 @@ def tiny_lora_model() -> TinyQwen3TTS:
             lora_alpha=4,
             lora_dropout=0.0,
             bias="none",
-            target_modules=[
-                "q_proj",
-                "k_proj",
-                "v_proj",
-                "o_proj",
-                "gate_proj",
-                "up_proj",
-                "down_proj",
-            ],
+            target_modules=list(LORA_TARGET_MODULES),
         ),
     )
     return model
@@ -139,7 +135,7 @@ def test_qwen_objective_produces_all_talker_lora_gradients() -> None:
     }
     assert losses.shape == (1,)
     assert torch.isfinite(losses).all()
-    assert len(trainable_parameters) == 28
+    assert len(trainable_parameters) == 60
     assert all("lora_" in name for name in trainable_parameters)
     assert any(
         ".model.layers.0." in name and ".code_predictor." not in name
