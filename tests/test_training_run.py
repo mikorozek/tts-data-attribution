@@ -5,12 +5,11 @@ from pathlib import Path
 
 import pytest
 
-from tts_data_attribution.experiment import TrainingRunManifest
+from tts_data_attribution.experiment import TrainingParameter, TrainingRunManifest
 
 
 def manifest() -> TrainingRunManifest:
     return TrainingRunManifest(
-        training_set="training-pool",
         dtype="bfloat16",
         lora_rank=8,
         lora_alpha=16,
@@ -25,12 +24,27 @@ def manifest() -> TrainingRunManifest:
     )
 
 
-def test_training_run_manifest_round_trips_through_yaml(tmp_path: Path) -> None:
+def resolved_manifest() -> TrainingRunManifest:
+    return replace(
+        manifest(),
+        parameters=(
+            TrainingParameter("layer.lora_A", (8, 4), "float32"),
+            TrainingParameter("layer.lora_B", (4, 8), "float32"),
+        ),
+        parameter_groups=(("layer.lora_A", "layer.lora_B"),),
+    )
+
+
+@pytest.mark.parametrize("value", [manifest(), resolved_manifest()])
+def test_training_run_manifest_round_trips_through_yaml(
+    tmp_path: Path,
+    value: TrainingRunManifest,
+) -> None:
     path = tmp_path / "manifest.yaml"
 
-    manifest().to_yaml(path)
+    value.to_yaml(path)
 
-    assert TrainingRunManifest.from_yaml(path) == manifest()
+    assert TrainingRunManifest.from_yaml(path) == value
 
 
 def test_example_training_run_manifest_is_valid() -> None:
@@ -42,7 +56,6 @@ def test_example_training_run_manifest_is_valid() -> None:
 @pytest.mark.parametrize(
     ("field", "value", "message"),
     [
-        ("training_set", "", "training set"),
         ("dtype", "float16", "dtype"),
         ("lora_rank", 0, "rank"),
         ("lora_alpha", 0, "alpha"),
@@ -51,6 +64,9 @@ def test_example_training_run_manifest_is_valid() -> None:
         ("adam_betas", (0.9, 1.0), "betas"),
         ("adam_epsilon", 0.0, "epsilon"),
         ("weight_decay", -0.1, "weight decay"),
+        ("learning_rate", float("nan"), "finite"),
+        ("adam_epsilon", float("inf"), "finite"),
+        ("weight_decay", float("nan"), "finite"),
         ("epochs", 0, "epochs"),
         ("batch_size", 0, "batch size"),
         ("seed", -1, "seed"),
@@ -65,11 +81,27 @@ def test_training_run_manifest_rejects_invalid_values(
         replace(manifest(), **{field: value})
 
 
+def test_training_run_manifest_rejects_an_incomplete_parameter_layout() -> None:
+    with pytest.raises(ValueError, match="layout must be complete"):
+        replace(
+            manifest(),
+            parameters=(TrainingParameter("layer", (2, 2), "float32"),),
+        )
+
+
+def test_training_run_manifest_rejects_misordered_parameter_groups() -> None:
+    with pytest.raises(ValueError, match="groups must match"):
+        replace(
+            resolved_manifest(),
+            parameter_groups=(("layer.lora_B", "layer.lora_A"),),
+        )
+
+
 def test_training_run_manifest_rejects_unknown_keys(tmp_path: Path) -> None:
     path = tmp_path / "manifest.yaml"
     path.write_text("unknown: true\n", encoding="utf-8")
 
-    with pytest.raises(ValueError, match="must contain exactly"):
+    with pytest.raises(ValueError, match="must contain dtype"):
         TrainingRunManifest.from_yaml(path)
 
 

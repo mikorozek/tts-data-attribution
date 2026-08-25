@@ -267,8 +267,7 @@ def test_train_processes_every_batch_and_evaluates_without_gradients(
         checkpoint,
         model.talker,
         optimizer,
-        epoch=2,
-        step=4,
+        history[-1],
     )
 
     adapter_parameters = {
@@ -276,12 +275,7 @@ def test_train_processes_every_batch_and_evaluates_without_gradients(
         for name, parameter in model.talker.named_parameters()
         if parameter.requires_grad
     }
-    metadata = json.loads((checkpoint / "metadata.json").read_text())
-    assert metadata["epoch"] == 2
-    assert metadata["step"] == 4
-    assert metadata["format_version"] == 1
-    assert metadata["parameter_groups"] == [list(adapter_parameters)]
-    assert [item["name"] for item in metadata["parameters"]] == list(adapter_parameters)
+    assert json.loads((checkpoint / "metrics.json").read_text()) == history[-1]
 
     optimizer_state = torch.load(
         checkpoint / "optimizer.pt", map_location="cpu", weights_only=True

@@ -10,7 +10,7 @@ import torch
 
 def save_immutable_torch_artifact(
     path: str | Path,
-    artifact: dict[str, Any],
+    artifact: Any,
 ) -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)

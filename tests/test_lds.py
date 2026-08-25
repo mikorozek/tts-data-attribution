@@ -7,14 +7,13 @@ import pytest
 import torch
 
 from tts_data_attribution.evaluation import (
-    LDSConfiguration,
     compute_lds,
     create_membership_matrix,
     save_immutable_torch_artifact,
 )
 
 
-def test_lds_uses_membership_masks_and_aggregates_per_query_correlations() -> None:
+def test_lds_uses_subset_membership_spearman_correlation_and_mean() -> None:
     training_ids = ["train-0", "train-1", "train-2", "train-3"]
     membership = create_membership_matrix(
         training_ids,
@@ -43,72 +42,26 @@ def test_lds_uses_membership_masks_and_aggregates_per_query_correlations() -> No
         ]
     )
 
-    result = compute_lds(
-        attributions,
-        membership,
-        observed_responses,
-        LDSConfiguration(),
+    result = compute_lds(attributions, membership, observed_responses)
+
+    assert result == pytest.approx(1.0 / 15.0)
+
+
+def test_create_membership_matrix_preserves_subset_and_training_order() -> None:
+    result = create_membership_matrix(
+        ["train-0", "train-1", "train-2"],
+        [["train-2", "train-0"], ["train-1"]],
     )
 
     torch.testing.assert_close(
-        result.predicted_responses,
-        torch.tensor(
-            [
-                [3.0, 12.0, 5.0],
-                [6.0, 6.0, 6.0],
-                [12.0, 3.0, 10.0],
-                [9.0, 9.0, 9.0],
-            ],
-            dtype=torch.float64,
-        ),
-    )
-    torch.testing.assert_close(
-        result.per_query_correlations,
-        torch.tensor([1.0, -1.0, 0.2], dtype=torch.float64),
-    )
-    assert result.aggregate_correlation == pytest.approx(1.0 / 15.0)
-    assert result.bootstrap_aggregate_correlations is None
-    assert result.confidence_interval is None
-
-
-def test_lds_supports_configured_subset_bootstrap_uncertainty() -> None:
-    membership = torch.eye(4, dtype=torch.bool)
-    attributions = torch.tensor([[1.0, 4.0], [2.0, 3.0], [3.0, 2.0], [4.0, 1.0]])
-    observed_responses = torch.tensor([[1.0, 1.0], [2.0, 2.0], [3.0, 3.0], [4.0, 4.0]])
-    configuration = LDSConfiguration(
-        correlation="pearson",
-        aggregation="median",
-        uncertainty="subset-bootstrap",
-        bootstrap_samples=100,
-        confidence_level=0.9,
-        seed=17,
+        result,
+        torch.tensor([[True, False, True], [False, True, False]]),
     )
 
-    first = compute_lds(
-        attributions,
-        membership,
-        observed_responses,
-        configuration,
-    )
-    second = compute_lds(
-        attributions,
-        observed_responses=torch.clone(observed_responses),
-        membership=membership,
-        configuration=configuration,
-    )
 
-    assert first.aggregate_correlation == pytest.approx(0.0)
-    assert first.bootstrap_aggregate_correlations is not None
-    assert second.bootstrap_aggregate_correlations is not None
-    assert first.bootstrap_aggregate_correlations.shape == (100,)
-    torch.testing.assert_close(
-        first.bootstrap_aggregate_correlations,
-        second.bootstrap_aggregate_correlations,
-    )
-    assert first.confidence_interval == second.confidence_interval
-    assert first.confidence_interval is not None
-    assert first.confidence_interval[0] >= -1.0
-    assert first.confidence_interval[1] <= 1.0
+def test_create_membership_matrix_rejects_unknown_ids() -> None:
+    with pytest.raises(ValueError, match="unknown ID: absent"):
+        create_membership_matrix(["train-0"], [["absent"]])
 
 
 def test_lds_rejects_an_undefined_query_correlation() -> None:
@@ -117,13 +70,7 @@ def test_lds_rejects_an_undefined_query_correlation() -> None:
             torch.ones(2, 1),
             torch.eye(2, dtype=torch.bool),
             torch.tensor([[1.0], [2.0]]),
-            LDSConfiguration(),
         )
-
-
-def test_create_membership_matrix_rejects_unknown_ids() -> None:
-    with pytest.raises(ValueError, match="unknown ID: absent"):
-        create_membership_matrix(["train-0"], [["absent"]])
 
 
 def test_lds_rejects_non_finite_membership_sums() -> None:
@@ -133,7 +80,6 @@ def test_lds_rejects_non_finite_membership_sums() -> None:
             torch.full((2, 1), maximum, dtype=torch.float64),
             torch.ones((2, 2), dtype=torch.bool),
             torch.tensor([[1.0], [2.0]]),
-            LDSConfiguration(),
         )
 
 

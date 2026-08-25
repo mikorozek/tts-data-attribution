@@ -1,33 +1,29 @@
 # CLI
 
-Status: **experiment initialization, encoding, training, TrackStar attribution, and LDS evaluation implemented**
+Status: **end-to-end experiment, training, attribution, and LDS pipeline implemented**
 
 ## Command tree
 
 ```text
 tda
 ├── experiment
-│   ├── init    <name> --dataset <dataset> --data-root <dir>
-│   │                  --model <model> --model-path <dir>
-│   │                  --training-pool-size N --validation-pool-size N
-│   │                  --query-pool-size N --subset-count N --subset-size N
-│   │                  --speaker-count N --seed N [--root]
-│   └── encode  <name> [--device] [--batch-size] [--root]
+│   ├── init    <name> [dataset, model, pool, subset, and seed options]
+│   └── encode  <name> [--device] [--batch-size]
 ├── training
-│   ├── configure <experiment> (--training-pool | --subset ID)
-│   │                        --lora-rank N --lora-alpha N
-│   │                        --learning-rate R --epochs N
-│   │                        --batch-size N --seed N [options]
-│   └── start     <experiment> <training-run-name> [--device]
+│   ├── configure <experiment> [training recipe]
+│   └── start     <experiment> <run> (--training-pool | --subset ID) [--device]
 ├── projection
-│   ├── init      <experiment> <projection-name>
-│   │             --training-run NAME --output-dimension N --seed N
-│   └── apply     <experiment> <projection-name>
+│   ├── init      <experiment> <run> <projection>
+│   │             --training-checkpoint training-pool/checkpoints/epoch-NNNN
+│   │             --output-dimension N --seed N
+│   └── apply     <experiment> <run> <projection>
 │                 (--training-pool | --query-pool) [--device]
 ├── trackstar
-│   └── compute   <experiment> <projection-name> --task-weight W [--device]
+│   └── compute   <experiment> <run> <projection> --task-weight W [--device]
+├── projected-cosine
+│   └── compute   <experiment> <run> <projection> [--device]
 └── lds
-    └── compute   <experiment> --projection NAME [--device]
+    └── compute   <attributions-path> [--device]
 ```
 
 ## `tda experiment init`
@@ -92,156 +88,151 @@ and already stored speaker embeddings.
 
 ## `tda training configure`
 
-`configure` requires exactly one data-selection mode:
+`configure` creates one training run for one complete numerical recipe. It does
+not select training data:
 
-```text
---training-pool       configure a run on plan.training_pool
---subset ID           configure a run on the named subset
+```bash
+tda training configure EXPERIMENT \
+  --lora-rank 16 --lora-alpha 32 --learning-rate 6e-5 \
+  --epochs 2 --batch-size 12 --seed 5678
 ```
 
-It creates an immutable run named `<set>-<UTC timestamp>` under
-`experiments/<name>/training-runs/`. The generated `manifest.yaml` records the
-selected set, dtype, LoRA configuration, AdamW configuration, epochs, batch
-size, and seed. Resolved defaults are persisted alongside explicitly provided
-values.
-
-A project-level
-[`training-run.example.yaml`](../../training-run.example.yaml) demonstrates the
-same strict schema. Configure another named run to change the recipe or train a
-different subset.
+The generated `training-runs/run-<UTC timestamp>/manifest.yaml` records dtype,
+LoRA, AdamW, epoch, batch-size, and seed settings. Different recipes or seeds
+require different runs.
 
 ## `tda training start`
 
-`start` receives the generated run name rather than another data-selection
-flag:
+`start` selects one model inside the configured run:
 
 ```bash
-tda training start EXPERIMENT TRAINING_RUN_NAME --device cuda:0
+tda training start EXPERIMENT RUN --training-pool --device cuda:0
+tda training start EXPERIMENT RUN --subset subset-0007 --device cuda:0
 ```
 
-The selected training set and complete recipe come from the run manifest. A run
-workspace has the following shape:
+The training-pool model must start first. It resolves the ordered trainable LoRA
+parameters and optimizer groups once in the run manifest. Every subset model
+must match that layout and inherits the same recipe.
 
 ```text
-experiments/<name>/training-runs/<run-name>/
+training-runs/<run>/
 ├── manifest.yaml
-├── metrics.jsonl
-└── target/
-    ├── adapter/
-    ├── optimizer.pt
-    └── metadata.json
+├── training-pool/
+│   ├── metrics.jsonl
+│   └── checkpoints/epoch-NNNN/
+│       ├── adapter/
+│       ├── optimizer.pt
+│       └── metrics.json
+└── subsets/<subset-id>/
+    ├── metrics.jsonl
+    └── checkpoints/epoch-NNNN/
+        ├── adapter/
+        ├── optimizer.pt
+        └── metrics.json
 ```
 
-Epoch metrics are appended to `metrics.jsonl` and written as JSON lines to
-stdout. `target/` is created atomically only after successful completion and
-contains the one final adapter and matching optimizer state. A run with metrics
-or a target cannot be started again; configure a new run instead.
-
-All experiment files and the selected device are validated before the model is
-loaded. The command reads the base model from the experiment manifest and all
-training choices from the immutable run manifest.
+Training and validation loss are measured before optimization and after each
+epoch. Each trained epoch creates one immutable checkpoint. The CLI performs no
+automatic checkpoint selection and stores no duplicated final target.
 
 ## `tda projection init`
 
-`init` reads the exact ordered LoRA parameter layout from a completed
-training-pool run target. It creates an independent two-sided random map for
-every trainable parameter matrix and stores the immutable artifact at:
+`init` requires an explicit complete-pool checkpoint from the same run:
+
+```bash
+tda projection init EXPERIMENT RUN PROJECTION \
+  --training-checkpoint training-pool/checkpoints/epoch-0002 \
+  --output-dimension 4096 --seed 1234
+```
+
+The checkpoint path is relative to the run and must have the exact
+`training-pool/checkpoints/epoch-NNNN` shape. The command initializes the
+random matrices from the run-level ordered parameter layout and writes:
 
 ```text
-experiments/<name>/trackstar/projections/<projection-name>/
+training-runs/<run>/projections/<projection>/
 ├── manifest.yaml
 └── matrices.pt
 ```
 
-The manifest records the projection type, associated training run, output
-dimension, seed, and ordered parameter names and shapes. `matrices.pt` stores
-all left and right matrices on CPU in float32. The output dimension must be a
-positive square. The command does not load model weights, optimizer state,
-encoded data, or gradients and never replaces an existing projection.
+The output dimension must be a positive square. Initialization loads no model,
+optimizer, encoded data, or gradients.
 
 ## `tda projection apply`
 
-`apply --training-pool` or `apply --query-pool` reloads the final adapter and
-matching AdamW state from
-the training run named in the projection manifest. It validates the ordered
-trainable parameter layout, evaluates the per-example objective in model eval
-mode, corrects every gradient with the saved AdamW second moment, and applies
-the saved two-sided matrices.
-
-The result is stored at:
+`apply --training-pool` and `apply --query-pool` reload the adapter and AdamW
+state selected in the projection manifest. They validate the parameter order,
+AdamW hyperparameters, optimizer step, and moment state before computing
+per-example gradients and applying second-moment correction. They write:
 
 ```text
-trackstar/projections/<projection-name>/projected/
+projections/<projection>/projected/
 ├── training-pool.pt
 └── query-pool.pt
 ```
 
-Each file contains the ordered pool utterance IDs and a float32 matrix shaped
-`[number of pool examples, output dimension]`. Projection application is not
-defined for subset training targets.
+Each artifact contains ordered utterance IDs and a floating matrix shaped
+`[examples, projection dimension]`.
 
 ## `tda trackstar compute`
 
-`compute` loads the projected training and query pools for one projection and
-forms their task-weighted Gauss–Newton Hessian approximation. It uses
-`torch.linalg.eigh` to construct a pseudoinverse square root, discarding
-eigenvalues below the numerical tolerance. The same correction is applied to
-training and query gradients before row-wise L2 normalization.
-
-The final multiplication produces a matrix shaped
-`[number of training examples, number of query examples]`. The command writes:
+TrackStar forms the task-weighted Gauss--Newton approximation, applies its
+pseudoinverse square root to both projected pools, normalizes each row, and
+writes:
 
 ```text
-trackstar/projections/<projection-name>/attributions.pt
+projections/<projection>/trackstar/
+├── config.yaml
+└── attributions.pt
 ```
 
-The file contains `task_weight`, ordered `training_ids`, ordered `query_ids`,
-and the attribution matrix. The task weight is required and has no default.
+`config.yaml` stores the required task weight. `attributions.pt` is the floating
+attribution tensor shaped `[training examples, query examples]`.
+
+## `tda projected-cosine compute`
+
+Projected cosine directly normalizes the same corrected projected gradients and
+writes its attribution tensor without loading a model or repeating gradients:
+
+```text
+projections/<projection>/projected-cosine/attributions.pt
+```
+
+Both attribution commands reject non-finite, zero-norm, incorrectly shaped, or
+misordered projected inputs and never replace an existing method directory.
 
 ## `tda lds compute`
 
-`compute` discovers every completed subset training run in the experiment. It
-ignores incomplete runs and refuses ambiguity when more than one completed run
-exists for the same subset. Each subset run must use the same training recipe as
-the training-pool run bound to the selected projection.
+`compute` receives exactly one attribution path:
 
-For every subset adapter, the command evaluates the ordered query pool and
-stores its per-query objective losses. It constructs the subset membership
-matrix and computes attribution-derived responses as:
-
-```text
-membership [subsets, training] @ attributions [training, queries]
+```bash
+tda lds compute \
+  experiments/EXPERIMENT/training-runs/RUN/projections/PROJECTION/trackstar/attributions.pt --device cuda:0
 ```
 
-The Qwen3-TTS response integration explicitly defines the observed response as
-the negative per-query objective. The reusable LDS backend receives only
-attributions, membership masks, and observed scalar responses; it does not
-assume what the response means.
-
-Following TRAK Definition 2.4, the command always computes Spearman correlation
-across subsets separately for every query and reports the arithmetic mean across
-queries. These protocol choices are not CLI options. It also performs 1,000
-seeded bootstrap repetitions by resampling complete subset rows and reports the
-fixed 95% percentile interval used by the TRAK evaluation protocol.
-
-The original TRAK benchmark averages five independent training runs for each of
-100 subset masks before computing LDS. This experiment has one fixed-seed model
-per subset, so its interval measures finite-subset uncertainty conditional on
-those realized models and does not measure training-seed variability.
-
-The command publishes one immutable artifact atomically:
+The path determines the experiment, run, projection, method, and output. The
+projection manifest determines the selected full-model epoch. LDS requires the
+matching checkpoint for every planned subset at:
 
 ```text
-experiments/<experiment>/trackstar/projections/<projection-name>/lds.pt
+training-runs/<run>/subsets/<subset-id>/checkpoints/epoch-NNNN
 ```
 
-The artifact records the resolved LDS configuration, response definition,
-subset IDs and training-run names, membership matrix, query losses, observed
-and predicted responses, per-query correlations, mean LDS, bootstrap mean-LDS
-samples, and the 95% confidence interval.
+The command evaluates each adapter on the ordered query pool, uses negative
+per-query objective as the observed response, sums attribution values over each
+subset, computes Spearman correlation across subsets for every query, and takes
+the arithmetic mean across queries. It writes only that finite scalar beside the
+input:
 
-The canonical definition and evaluation procedure are in the TRAK paper,
-Definition 2.4 and Section 4.1:
+```text
+trackstar/lds.pt
+projected-cosine/lds.pt
+```
+
+The command has no response cache, automatic method discovery, statistical
+payload, or alternate artifact format.
+
+The canonical LDS definition is TRAK Definition 2.4:
 <https://proceedings.mlr.press/v202/park23c.html>.
 
 ## Shared rules

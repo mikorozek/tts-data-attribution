@@ -6,9 +6,10 @@ from pathlib import Path
 import torch
 import yaml
 
-from ..experiment import Plan
+from ..evaluation import save_immutable_torch_artifact
 from ..trackstar import GaussNewtonHessianApproximation
-from .errors import CommandError
+from .errors import CommandError, require_flat_name
+from .projection import load_projected_pools
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:
@@ -19,6 +20,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         "compute", help="compute an attribution matrix"
     )
     compute_parser.add_argument("experiment_name", metavar="experiment-name")
+    compute_parser.add_argument("training_run_name", metavar="training-run-name")
     compute_parser.add_argument("projection_name", metavar="projection-name")
     compute_parser.add_argument("--task-weight", type=float, required=True)
     compute_parser.add_argument(
@@ -30,28 +32,26 @@ def register(subparsers: argparse._SubParsersAction) -> None:
 
 
 def run_compute(arguments: argparse.Namespace) -> None:
-    if Path(arguments.projection_name).name != arguments.projection_name:
-        raise CommandError("projection name must be a single path component")
+    for value, name in [
+        (arguments.experiment_name, "experiment name"),
+        (arguments.training_run_name, "training run name"),
+        (arguments.projection_name, "projection name"),
+    ]:
+        require_flat_name(value, name)
 
     experiment_directory = Path("experiments") / arguments.experiment_name
     projection_directory = (
-        experiment_directory / "trackstar" / "projections" / arguments.projection_name
+        experiment_directory
+        / "training-runs"
+        / arguments.training_run_name
+        / "projections"
+        / arguments.projection_name
     )
-    paths = {
-        "plan": experiment_directory / "plan.json",
-        "projection manifest": projection_directory / "manifest.yaml",
-        "projected training pool": projection_directory
-        / "projected"
-        / "training-pool.pt",
-        "projected query pool": projection_directory / "projected" / "query-pool.pt",
-    }
-    missing = [name for name, path in paths.items() if not path.is_file()]
-    if missing:
-        raise CommandError(f"TrackStar input is missing: {', '.join(missing)}")
-
-    output_path = projection_directory / "attributions.pt"
-    if output_path.exists():
-        raise CommandError(f"attributions already exist at {output_path}")
+    method_directory = projection_directory / "trackstar"
+    if method_directory.exists():
+        raise CommandError(
+            f"TrackStar attribution already exists at {method_directory}"
+        )
 
     try:
         device = torch.device(arguments.device)
@@ -61,54 +61,15 @@ def run_compute(arguments: argparse.Namespace) -> None:
         raise CommandError("CUDA is not available")
 
     try:
-        plan = Plan.from_json(paths["plan"])
-        projection_manifest = yaml.safe_load(
-            paths["projection manifest"].read_text(encoding="utf-8")
+        pools = load_projected_pools(
+            experiment_directory,
+            projection_directory,
+            device,
         )
-        training_artifact = torch.load(
-            paths["projected training pool"],
-            map_location=device,
-            weights_only=True,
-        )
-        query_artifact = torch.load(
-            paths["projected query pool"],
-            map_location=device,
-            weights_only=True,
-        )
-        if not isinstance(projection_manifest, dict):
-            raise ValueError("projection manifest must be a mapping")
-        if projection_manifest.get("type") != "two-sided":
-            raise ValueError("projection type must be two-sided")
-        output_dimension = projection_manifest["output_dimension"]
-        if type(output_dimension) is not int or output_dimension < 1:
-            raise ValueError("projection output dimension must be a positive integer")
-        if not isinstance(training_artifact, dict) or not isinstance(
-            query_artifact, dict
-        ):
-            raise ValueError("projected pool artifacts must be mappings")
-        training_ids = training_artifact["ids"]
-        query_ids = query_artifact["ids"]
-        training = training_artifact["projected_gradients"]
-        queries = query_artifact["projected_gradients"]
-        if training_ids != plan.training_pool:
-            raise ValueError("projected training IDs differ from the experiment plan")
-        if query_ids != plan.query_pool:
-            raise ValueError("projected query IDs differ from the experiment plan")
-        if not isinstance(training, torch.Tensor) or not isinstance(
-            queries, torch.Tensor
-        ):
-            raise ValueError("projected gradients must be tensors")
-        if (
-            training.ndim != 2
-            or queries.ndim != 2
-            or training.shape != (len(training_ids), output_dimension)
-            or queries.shape != (len(query_ids), output_dimension)
-        ):
-            raise ValueError("projected gradient dimensions are invalid")
         approximation = GaussNewtonHessianApproximation(
             task_weight=arguments.task_weight
         )
-        hessian = approximation.compute(training, queries)
+        hessian = approximation.compute(pools.training, pools.queries)
     except (
         KeyError,
         OSError,
@@ -134,8 +95,8 @@ def run_compute(arguments: argparse.Namespace) -> None:
         inverse_values = eigenvalues[retained].rsqrt()
         inverse_hessian_square_root = (basis * inverse_values) @ basis.T
 
-        corrected_training = training @ inverse_hessian_square_root
-        corrected_queries = queries @ inverse_hessian_square_root
+        corrected_training = pools.training @ inverse_hessian_square_root
+        corrected_queries = pools.queries @ inverse_hessian_square_root
         training_norms = torch.linalg.vector_norm(
             corrected_training,
             dim=1,
@@ -153,24 +114,24 @@ def run_compute(arguments: argparse.Namespace) -> None:
             or not torch.all(torch.isfinite(query_norms))
         ):
             raise ValueError("cannot normalize a zero or non-finite representation")
-        normalized_training = corrected_training / training_norms
-        normalized_queries = corrected_queries / query_norms
-        attributions = normalized_training @ normalized_queries.T
+        attributions = (corrected_training / training_norms) @ (
+            corrected_queries / query_norms
+        ).T
         if not torch.all(torch.isfinite(attributions)):
             raise ValueError("TrackStar attribution contains non-finite values")
     except (RuntimeError, TypeError, ValueError) as error:
         raise CommandError(f"cannot compute TrackStar attribution: {error}") from error
 
     try:
-        torch.save(
-            {
-                "task_weight": arguments.task_weight,
-                "training_ids": training_ids,
-                "query_ids": query_ids,
-                "attributions": attributions.cpu(),
-            },
-            output_path,
+        method_directory.mkdir(parents=True)
+        (method_directory / "config.yaml").write_text(
+            yaml.safe_dump({"task_weight": arguments.task_weight}, sort_keys=False),
+            encoding="utf-8",
         )
-    except (OSError, RuntimeError) as error:
+        save_immutable_torch_artifact(
+            method_directory / "attributions.pt",
+            attributions.cpu(),
+        )
+    except (FileExistsError, OSError, RuntimeError, yaml.YAMLError) as error:
         raise CommandError(f"cannot save TrackStar attribution: {error}") from error
-    print(f"TrackStar attribution saved at {output_path}")
+    print(f"TrackStar attribution saved at {method_directory / 'attributions.pt'}")

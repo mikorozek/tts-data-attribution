@@ -11,7 +11,7 @@ from torch.utils.data import DataLoader
 from ..dataset import DATASETS, UtteranceDataset
 from ..experiment import ExperimentManifest, Plan
 from ..models import EXPERIMENT_ENCODERS
-from .errors import CommandError
+from .errors import CommandError, require_flat_name
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:
@@ -49,6 +49,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
 
 
 def run_init(arguments: argparse.Namespace) -> None:
+    require_flat_name(arguments.name, "experiment name")
     directory = arguments.root / arguments.name
     if directory.exists():
         raise CommandError(f"experiment {arguments.name} already exists at {directory}")
@@ -80,6 +81,7 @@ def run_init(arguments: argparse.Namespace) -> None:
 
 
 def run_encode(arguments: argparse.Namespace) -> None:
+    require_flat_name(arguments.name, "experiment name")
     directory = arguments.root / arguments.name
     manifest_path = directory / "manifest.yaml"
     plan_path = directory / "plan.json"

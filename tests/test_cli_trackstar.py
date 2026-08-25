@@ -21,17 +21,16 @@ def create_projected_pools(root: Path) -> Path:
         subsets={},
     )
     plan.to_json(experiment / "plan.json")
-    projection = experiment / "trackstar" / "projections" / "two-sided-4"
+    projection = experiment / "training-runs" / "run-1" / "projections" / "two-sided-4"
     projected = projection / "projected"
     projected.mkdir(parents=True)
     (projection / "manifest.yaml").write_text(
         yaml.safe_dump(
             {
                 "type": "two-sided",
-                "training_checkpoint": "training-checkpoints/epoch-0002",
+                "training_checkpoint": "training-pool/checkpoints/epoch-0002",
                 "output_dimension": 4,
                 "seed": 7,
-                "parameters": [],
             },
             sort_keys=False,
         ),
@@ -61,6 +60,7 @@ def compute_arguments(task_weight: str = "0.5") -> list[str]:
         "trackstar",
         "compute",
         "study",
+        "run-1",
         "two-sided-4",
         "--task-weight",
         task_weight,
@@ -78,12 +78,11 @@ def test_trackstar_compute_uses_a_pseudoinverse_for_a_singular_hessian(
 
     assert main(compute_arguments()) == 0
 
-    result = torch.load(projection / "attributions.pt", weights_only=True)
-    assert result["task_weight"] == 0.5
-    assert result["training_ids"] == ["train-0", "train-1"]
-    assert result["query_ids"] == ["query-0"]
-    assert result["attributions"].shape == (2, 1)
-    torch.testing.assert_close(result["attributions"], torch.ones(2, 1))
+    result = torch.load(projection / "trackstar" / "attributions.pt", weights_only=True)
+    torch.testing.assert_close(result, torch.ones(2, 1))
+    assert yaml.safe_load((projection / "trackstar" / "config.yaml").read_text()) == {
+        "task_weight": 0.5
+    }
 
 
 def test_trackstar_compute_rejects_projected_ids_outside_the_plan(
@@ -101,23 +100,22 @@ def test_trackstar_compute_rejects_projected_ids_outside_the_plan(
     assert main(compute_arguments()) == 1
 
     assert "query IDs differ" in capsys.readouterr().err
-    assert not (projection / "attributions.pt").exists()
+    assert not (projection / "trackstar").exists()
 
 
-def test_trackstar_compute_refuses_to_replace_attributions(
+def test_trackstar_compute_refuses_to_replace_its_method_directory(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     monkeypatch.chdir(tmp_path)
     projection = create_projected_pools(tmp_path)
-    output = projection / "attributions.pt"
-    output.write_bytes(b"existing")
+    output = projection / "trackstar"
+    output.mkdir()
 
     assert main(compute_arguments()) == 1
 
-    assert "already exist" in capsys.readouterr().err
-    assert output.read_bytes() == b"existing"
+    assert "already exists" in capsys.readouterr().err
 
 
 def test_trackstar_compute_rejects_tensor_rows_that_do_not_match_ids(
@@ -134,8 +132,8 @@ def test_trackstar_compute_rejects_tensor_rows_that_do_not_match_ids(
 
     assert main(compute_arguments()) == 1
 
-    assert "dimensions are invalid" in capsys.readouterr().err
-    assert not (projection / "attributions.pt").exists()
+    assert "dimensions or dtype are invalid" in capsys.readouterr().err
+    assert not (projection / "trackstar").exists()
 
 
 def test_trackstar_normalization_accepts_nonzero_norm_below_machine_epsilon(
@@ -153,5 +151,5 @@ def test_trackstar_normalization_accepts_nonzero_norm_below_machine_epsilon(
 
     assert main(compute_arguments("1.0")) == 0
 
-    result = torch.load(projection / "attributions.pt", weights_only=True)
-    torch.testing.assert_close(result["attributions"], torch.ones(2, 1))
+    result = torch.load(projection / "trackstar" / "attributions.pt", weights_only=True)
+    torch.testing.assert_close(result, torch.ones(2, 1))

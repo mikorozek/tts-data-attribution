@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import math
+
 import torch
 
 
 class GaussNewtonHessianApproximation:
     def __init__(self, *, task_weight: float) -> None:
-        if not 0.0 <= task_weight <= 1.0:
+        if not math.isfinite(task_weight) or not 0.0 <= task_weight <= 1.0:
             raise ValueError("task weight must be between zero and one")
         self.task_weight = task_weight
 

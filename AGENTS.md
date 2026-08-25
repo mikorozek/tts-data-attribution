@@ -69,14 +69,13 @@ Additional attribution backends should be addable behind the same user-facing in
 
 ### Evaluation
 
-LDS is the first counterfactual validation backend. It should accept:
+LDS is the counterfactual validation backend. It accepts:
 
 - an attribution vector for each query;
 - subset membership masks;
-- observed scalar outcomes from corresponding subset models;
-- configurable correlation, aggregation, and uncertainty estimation.
+- observed scalar outcomes from corresponding subset models.
 
-LDS code must not assume what the scalar outcome means. An integration may use negative loss, margin, accuracy, perceptual score, or another documented response.
+It computes Spearman correlation across subsets for each query and returns the arithmetic mean across queries. The production pipeline does not expose alternative correlations, aggregation rules, or uncertainty estimation. LDS code must not assume what the scalar outcome means. An integration may use negative loss, margin, accuracy, perceptual score, or another documented response.
 
 ## Configuration and resolved manifests
 

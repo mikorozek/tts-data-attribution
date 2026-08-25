@@ -1,4 +1,3 @@
-training_set: training-pool
 dtype: bfloat16
 lora:
   rank: 8

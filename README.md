@@ -1,8 +1,8 @@
 # TTS Data Attribution
 
 Reusable PyTorch framework for data-attribution experiments validated through
-counterfactual retraining. TrackStar and Linear Datamodeling Score are the first
-planned attribution and evaluation methods.
+counterfactual retraining. The implemented attribution methods are TrackStar and
+projected cosine, evaluated with Linear Datamodeling Score.
 
 The framework accepts user-provided datasets, `torch.nn.Module` models,
 per-example objectives, parameter selectors, training procedures, subset masks,
@@ -68,83 +68,110 @@ The Qwen model recorded in the manifest supplies the text processor, bundled
 `speaker_embeddings.pt` for the reference utterances. It appends complete
 batches and skips already encoded IDs when resumed.
 
-Configure one immutable, named training run for a selected training set:
+Configure one immutable training run. The configuration is shared by the model
+trained on the complete pool and every model trained on a named subset:
 
 ```bash
-uv run tda training configure voice-study-1 --training-pool \
+uv run tda training configure voice-study-1 \
   --lora-rank 8 --lora-alpha 16 \
   --learning-rate 2e-5 --epochs 3 --batch-size 1 --seed 5678
 ```
 
-The command creates `training-runs/<set>-<UTC timestamp>/manifest.yaml` and
-prints the generated run name. The strict schema is also shown in
-[`training-run.example.yaml`](training-run.example.yaml). Configure a separate
-run with `--subset subset-0007` to train on a named LDS subset.
+The command creates `training-runs/run-<UTC timestamp>/manifest.yaml` and prints
+the generated run name. The strict schema is also shown in
+[`training-run.example.yaml`](training-run.example.yaml).
 
-Start the configured run by its generated name:
+Choose the data selection only when starting one model inside the run:
 
 ```bash
-uv run tda training start voice-study-1 \
-  training-pool-20260820T153012123456Z --device cuda:0
+uv run tda training start voice-study-1 run-20260820T153012123456Z \
+  --training-pool --device cuda:0
+
+uv run tda training start voice-study-1 run-20260820T153012123456Z \
+  --subset subset-0007 --device cuda:0
 ```
 
-Epoch metrics are appended to `metrics.jsonl`. A successful run writes its one
-final adapter and optimizer state atomically under `target/`.
+The training-pool model must be started before subset models because it resolves
+the common ordered LoRA parameter layout in the run manifest. Every model writes
+its own `metrics.jsonl` and one immutable checkpoint per trained epoch:
 
-Initialize a reusable two-sided projection from the ordered LoRA parameter
-layout recorded by a selected training-pool checkpoint:
+```text
+training-runs/<run>/
+├── manifest.yaml
+├── training-pool/
+│   ├── metrics.jsonl
+│   └── checkpoints/epoch-NNNN/
+└── subsets/<subset-id>/
+    ├── metrics.jsonl
+    └── checkpoints/epoch-NNNN/
+```
+
+Each checkpoint contains `adapter/`, `optimizer.pt`, and `metrics.json`. There
+is no automatic checkpoint selection or duplicated final target.
+
+Initialize a reusable two-sided projection inside the same training run:
 
 ```bash
-uv run tda projection init voice-study-1 two-sided-4096 \
-  --training-checkpoint \
-    training-runs/training-pool-20260820T153012123456Z/checkpoints/epoch-0002 \
+uv run tda projection init voice-study-1 \
+  run-20260820T153012123456Z two-sided-4096 \
+  --training-checkpoint training-pool/checkpoints/epoch-0002 \
   --output-dimension 4096 --seed 1234
 ```
 
-The checkpoint path is relative to the experiment directory. The command reads
-its saved training configuration and epoch, then stores an immutable projection
-manifest and the random left and right matrices under
-`trackstar/projections/<projection-name>/`. It does not load the model or
-compute gradients.
+The explicit checkpoint path is relative to the training run. The command reads
+the common parameter layout and stores the projection under
+`training-runs/<run>/projections/<projection>/` without loading the model.
 
-Apply the saved projection to every example in the checkpoint's training pool:
+Apply the projection to the complete training pool and the query pool:
 
 ```bash
-uv run tda projection apply voice-study-1 two-sided-4096 \
+uv run tda projection apply voice-study-1 \
+  run-20260820T153012123456Z two-sided-4096 \
   --training-pool --device cuda:0
+
+uv run tda projection apply voice-study-1 \
+  run-20260820T153012123456Z two-sided-4096 \
+  --query-pool --device cuda:0
 ```
 
-The command reloads the selected adapter and matching AdamW state, computes and
-corrects each per-example gradient, and writes `projected/training-pool.pt`.
-Apply the same model, optimizer state, and projection to the experiment query
-pool with `--query-pool`; subset training targets are never projected.
+Both commands reload the explicitly selected adapter and matching AdamW state.
+They validate the parameter order, AdamW recipe, optimizer step, and moments.
+They write `projected/training-pool.pt` and `projected/query-pool.pt`.
 
-Compute the Hessian-corrected, unit-normalized TrackStar scores after both pools
-have been projected:
+Compute TrackStar and projected cosine from the same projected gradients:
 
 ```bash
-uv run tda trackstar compute voice-study-1 two-sided-4096 \
+uv run tda trackstar compute voice-study-1 \
+  run-20260820T153012123456Z two-sided-4096 \
   --task-weight 0.9 --device cuda:0
+
+uv run tda projected-cosine compute voice-study-1 \
+  run-20260820T153012123456Z two-sided-4096 --device cuda:0
 ```
 
-The command writes `attributions.pt`, containing the ordered training and query
-IDs and an attribution matrix shaped `[number of training examples, number of
-query examples]`.
+The immutable attribution tensors are stored separately:
 
-Evaluate all unambiguous, completed subset training runs with LDS:
+```text
+projections/<projection>/
+├── trackstar/
+│   ├── config.yaml
+│   └── attributions.pt
+└── projected-cosine/
+    └── attributions.pt
+```
+
+Evaluate one attribution tensor by passing its path directly:
 
 ```bash
-uv run tda lds compute voice-study-1 \
-  --projection two-sided-4096 --device cuda:0
+uv run tda lds compute \
+  experiments/voice-study-1/training-runs/run-20260820T153012123456Z/projections/two-sided-4096/trackstar/attributions.pt --device cuda:0
 ```
 
-The command evaluates the query objective under each subset adapter, sums the
-attribution scores selected by each subset, and atomically saves the observed
-responses, predicted responses, per-query Spearman correlations, their mean,
-and a fixed 95% subset-bootstrap interval in the projection's `lds.pt`. The
-correlation and aggregation follow the canonical TRAK LDS definition and are
-not user-facing options.
-
+LDS uses the subset checkpoints from the same run and the same epoch as the
+projection's selected training-pool checkpoint. It computes Spearman correlation
+across subsets for each query and saves their arithmetic mean as the scalar
+`lds.pt` beside the selected `attributions.pt`. Missing subset checkpoints and
+existing outputs are errors.
 ## Dataset API
 
 `DailyTalkDataset` transiently exposes raw source records for sampling and
@@ -167,8 +194,9 @@ The interface is specified in
 [`docs/specs/dataset-integration.md`](docs/specs/dataset-integration.md). Qwen3-TTS
 batching, differentiable talker inputs, and the per-example codebook objective
 are implemented. Generic LoRA injection, the core training and validation loop,
-final adapter and AdamW checkpoint serialization, per-example gradient
+per-epoch adapter and AdamW checkpoint serialization, per-example gradient
 collection, AdamW second-moment correction, Qwen LoRA block projection,
-TrackStar Hessian correction, unit normalization, and attribution scoring are
-also implemented, together with named training runs, persisted projected
-training/query pools, and LDS evaluation over completed subset models.
+TrackStar Hessian correction, projected cosine, unit normalization, and attribution
+scoring are also implemented, together with cohesive training runs, persisted
+projected training/query pools, and same-run, same-epoch LDS evaluation over subset
+models.

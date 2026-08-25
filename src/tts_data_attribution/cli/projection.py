@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import argparse
-import json
-from dataclasses import replace
+import math
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
 
@@ -13,15 +13,16 @@ from torch.optim import AdamW
 from torch.utils.data import DataLoader
 
 from ..dataset import UtteranceDataset
+from ..evaluation import save_immutable_torch_artifact
 from ..experiment import ExperimentManifest, Plan, TrainingRunManifest
-from ..models import is_lora_checkpoint_complete
+from ..models import is_lora_checkpoint_complete, load_checkpoint_metrics
 from ..models.qwen3_tts import collate, load_model, objective
 from ..trackstar import (
     TwoSidedRandomProjection,
     collect_per_example_gradients,
     correct_gradients_with_adamw,
 )
-from .errors import CommandError
+from .errors import CommandError, require_flat_name
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:
@@ -34,12 +35,13 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         "init", help="initialize a random projection"
     )
     init_parser.add_argument("experiment_name", metavar="experiment-name")
+    init_parser.add_argument("training_run_name", metavar="training-run-name")
     init_parser.add_argument("projection_name", metavar="projection-name")
     init_parser.add_argument(
         "--training-checkpoint",
         required=True,
         metavar="checkpoint-path",
-        help="checkpoint path relative to the experiment directory",
+        help="training-pool checkpoint path relative to the training run",
     )
     init_parser.add_argument("--output-dimension", type=int, required=True)
     init_parser.add_argument("--seed", type=int, required=True)
@@ -49,6 +51,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         "apply", help="apply a projection to per-example gradients"
     )
     apply_parser.add_argument("experiment_name", metavar="experiment-name")
+    apply_parser.add_argument("training_run_name", metavar="training-run-name")
     apply_parser.add_argument("projection_name", metavar="projection-name")
     selection = apply_parser.add_mutually_exclusive_group(required=True)
     selection.add_argument(
@@ -69,82 +72,263 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     apply_parser.set_defaults(run=run_apply)
 
 
-def _require_flat_name(value: str, name: str) -> None:
-    if not value or Path(value).name != value:
-        raise CommandError(f"{name} must be a single path component")
+@dataclass(frozen=True)
+class ProjectedPools:
+    training: torch.Tensor
+    queries: torch.Tensor
+
+
+def load_projected_pools(
+    experiment_directory: Path,
+    projection_directory: Path,
+    device: torch.device | str,
+) -> ProjectedPools:
+    plan_path = experiment_directory / "plan.json"
+    manifest_path = projection_directory / "manifest.yaml"
+    training_path = projection_directory / "projected" / "training-pool.pt"
+    query_path = projection_directory / "projected" / "query-pool.pt"
+    missing = [
+        name
+        for name, path in [
+            ("plan", plan_path),
+            ("projection manifest", manifest_path),
+            ("projected training pool", training_path),
+            ("projected query pool", query_path),
+        ]
+        if not path.is_file()
+    ]
+    if missing:
+        raise ValueError(f"projected pool input is missing: {', '.join(missing)}")
+
+    plan = Plan.from_json(plan_path)
+    manifest = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
+    training_artifact = torch.load(
+        training_path,
+        map_location=device,
+        weights_only=True,
+    )
+    query_artifact = torch.load(
+        query_path,
+        map_location=device,
+        weights_only=True,
+    )
+    if not isinstance(manifest, dict) or manifest.get("type") != "two-sided":
+        raise ValueError("projection manifest is invalid")
+    output_dimension = manifest.get("output_dimension")
+    if type(output_dimension) is not int or output_dimension < 1:
+        raise ValueError("projection output dimension must be a positive integer")
+    if not isinstance(training_artifact, dict) or not isinstance(query_artifact, dict):
+        raise ValueError("projected pool artifacts must be mappings")
+    if training_artifact.get("ids") != plan.training_pool:
+        raise ValueError("projected training IDs differ from the experiment plan")
+    if query_artifact.get("ids") != plan.query_pool:
+        raise ValueError("projected query IDs differ from the experiment plan")
+
+    training = training_artifact.get("projected_gradients")
+    queries = query_artifact.get("projected_gradients")
+    if (
+        not isinstance(training, torch.Tensor)
+        or not isinstance(queries, torch.Tensor)
+        or not training.is_floating_point()
+        or not queries.is_floating_point()
+        or training.shape != (len(plan.training_pool), output_dimension)
+        or queries.shape != (len(plan.query_pool), output_dimension)
+    ):
+        raise ValueError("projected gradient dimensions or dtype are invalid")
+    if not torch.isfinite(training).all() or not torch.isfinite(queries).all():
+        raise ValueError("projected gradients must be finite")
+    return ProjectedPools(training=training, queries=queries)
 
 
 def resolve_training_checkpoint(
-    experiment_directory: Path,
+    training_run_directory: Path,
     source: dict[str, object],
-) -> tuple[Path, TrainingRunManifest]:
+) -> tuple[Path, TrainingRunManifest, int, int]:
     value = source.get("training_checkpoint")
     if not isinstance(value, str) or not value:
         raise CommandError("projection training checkpoint is missing")
     relative_path = Path(value)
-    if relative_path.is_absolute() or ".." in relative_path.parts:
-        raise CommandError("training checkpoint must be a safe relative path")
-    checkpoint = experiment_directory / relative_path
-    manifest_path = checkpoint / "training-run.yaml"
+    if (
+        relative_path.is_absolute()
+        or ".." in relative_path.parts
+        or len(relative_path.parts) != 3
+        or relative_path.parts[:2] != ("training-pool", "checkpoints")
+    ):
+        raise CommandError(
+            "training checkpoint must identify training-pool/checkpoints/epoch-NNNN"
+        )
+    epoch_name = relative_path.parts[2]
+    if not epoch_name.startswith("epoch-"):
+        raise CommandError("training checkpoint epoch name is invalid")
+    try:
+        checkpoint_epoch = int(epoch_name.removeprefix("epoch-"))
+    except ValueError as error:
+        raise CommandError("training checkpoint epoch name is invalid") from error
+    if checkpoint_epoch < 1 or epoch_name != f"epoch-{checkpoint_epoch:04d}":
+        raise CommandError("training checkpoint epoch name is invalid")
+
+    checkpoint = training_run_directory / relative_path
+    manifest_path = training_run_directory / "manifest.yaml"
     if not manifest_path.is_file():
-        raise CommandError(f"training manifest is missing at {manifest_path}")
+        raise CommandError(f"training run manifest is missing at {manifest_path}")
     if not is_lora_checkpoint_complete(checkpoint):
         raise CommandError(f"training checkpoint is incomplete at {checkpoint}")
     try:
         training_run = TrainingRunManifest.from_yaml(manifest_path)
-        metadata = json.loads(
-            (checkpoint / "metadata.json").read_text(encoding="utf-8")
+        metrics = load_checkpoint_metrics(
+            checkpoint / "metrics.json",
+            expected_epoch=checkpoint_epoch,
+            maximum_epoch=training_run.epochs,
         )
-        checkpoint_epoch = metadata["epoch"]
-        if type(checkpoint_epoch) is not int or checkpoint_epoch < 1:
-            raise ValueError("checkpoint epoch must be a positive integer")
+        if not training_run.parameters:
+            raise ValueError("training run parameter layout is missing")
     except (
-        KeyError,
         OSError,
         TypeError,
         ValueError,
-        json.JSONDecodeError,
         yaml.YAMLError,
     ) as error:
         raise CommandError(f"cannot read training checkpoint: {error}") from error
-    return checkpoint, replace(training_run, epochs=checkpoint_epoch)
+    return checkpoint, training_run, checkpoint_epoch, int(metrics["step"])
+
+
+def _validate_adamw_state_dict(
+    state_dict: object,
+    training_run: TrainingRunManifest,
+    expected_step: int,
+) -> None:
+    if not isinstance(state_dict, dict) or set(state_dict) != {"state", "param_groups"}:
+        raise ValueError("AdamW checkpoint must contain state and parameter groups")
+    states = state_dict["state"]
+    serialized_groups = state_dict["param_groups"]
+    if not isinstance(states, dict) or not isinstance(serialized_groups, list):
+        raise ValueError("AdamW checkpoint state or parameter groups are invalid")
+    if len(serialized_groups) != len(training_run.parameter_groups):
+        raise ValueError("AdamW parameter group count differs from the training run")
+
+    expected_options = {
+        "lr": training_run.learning_rate,
+        "betas": training_run.adam_betas,
+        "eps": training_run.adam_epsilon,
+        "weight_decay": training_run.weight_decay,
+        "amsgrad": False,
+        "maximize": False,
+        "foreach": None,
+        "capturable": False,
+        "differentiable": False,
+        "fused": None,
+        "decoupled_weight_decay": True,
+    }
+    expected_indices = []
+    next_index = 0
+    for group, parameter_names in zip(
+        serialized_groups,
+        training_run.parameter_groups,
+        strict=True,
+    ):
+        if not isinstance(group, dict):
+            raise ValueError("AdamW parameter group is invalid")
+        indices = list(range(next_index, next_index + len(parameter_names)))
+        if group.get("params") != indices:
+            raise ValueError("AdamW parameter order differs from the training run")
+        for name, expected in expected_options.items():
+            actual = group.get(name)
+            if name == "betas" and isinstance(actual, list | tuple):
+                actual = tuple(actual)
+            if actual != expected:
+                raise ValueError(f"AdamW {name} differs from the training run")
+        expected_indices.extend(indices)
+        next_index += len(parameter_names)
+    if set(states) != set(expected_indices):
+        raise ValueError("AdamW state parameters differ from the training run")
+
+    for index, parameter in enumerate(training_run.parameters):
+        state = states[index]
+        if not isinstance(state, dict):
+            raise ValueError(f"AdamW state is invalid for parameter {index}")
+        step = state.get("step")
+        if isinstance(step, torch.Tensor):
+            if step.numel() != 1:
+                raise ValueError(f"AdamW state step is invalid for parameter {index}")
+            step = step.item()
+        if (
+            isinstance(step, bool)
+            or not isinstance(step, int | float)
+            or not math.isfinite(float(step))
+            or not float(step).is_integer()
+            or int(step) != expected_step
+        ):
+            raise ValueError(
+                "AdamW state step differs from checkpoint metrics for "
+                f"parameter {index}"
+            )
+        for moment_name in ["exp_avg", "exp_avg_sq"]:
+            moment = state.get(moment_name)
+            if (
+                not isinstance(moment, torch.Tensor)
+                or not moment.is_floating_point()
+                or moment.shape != parameter.shape
+                or not torch.isfinite(moment).all()
+            ):
+                raise ValueError(
+                    f"AdamW {moment_name} is invalid for parameter {index}"
+                )
+
+
+def _load_adamw_optimizer(
+    trainable_parameters: tuple[tuple[str, torch.nn.Parameter], ...],
+    training_run: TrainingRunManifest,
+    state_path: Path,
+    expected_step: int,
+) -> AdamW:
+    parameters_by_name = dict(trainable_parameters)
+    grouped_parameters = [
+        [parameters_by_name[name] for name in group]
+        for group in training_run.parameter_groups
+    ]
+    optimizer = AdamW(
+        [{"params": parameters} for parameters in grouped_parameters],
+        lr=training_run.learning_rate,
+        betas=training_run.adam_betas,
+        eps=training_run.adam_epsilon,
+        weight_decay=training_run.weight_decay,
+    )
+    state_dict = torch.load(state_path, map_location="cpu", weights_only=True)
+    _validate_adamw_state_dict(state_dict, training_run, expected_step)
+    optimizer.load_state_dict(state_dict)
+    return optimizer
 
 
 def run_init(arguments: argparse.Namespace) -> None:
-    _require_flat_name(arguments.projection_name, "projection name")
+    require_flat_name(arguments.experiment_name, "experiment name")
+    require_flat_name(arguments.training_run_name, "training run name")
+    require_flat_name(arguments.projection_name, "projection name")
     if arguments.seed < 0:
         raise CommandError("projection seed must not be negative")
 
     experiment_directory = Path("experiments") / arguments.experiment_name
+    training_run_directory = (
+        experiment_directory / "training-runs" / arguments.training_run_name
+    )
     if not (experiment_directory / "manifest.yaml").is_file():
         raise CommandError(f"experiment {arguments.experiment_name} does not exist")
     source = {"training_checkpoint": arguments.training_checkpoint}
-    target, training_run = resolve_training_checkpoint(experiment_directory, source)
-    if training_run.training_set != "training-pool":
-        raise CommandError("projection requires a training-pool run")
+    _, training_run, _, _ = resolve_training_checkpoint(training_run_directory, source)
 
     projection_directory = (
-        experiment_directory / "trackstar" / "projections" / arguments.projection_name
+        training_run_directory / "projections" / arguments.projection_name
     )
     if projection_directory.exists():
         raise CommandError(f"projection already exists at {projection_directory}")
 
     try:
-        metadata = json.loads((target / "metadata.json").read_text(encoding="utf-8"))
-        if metadata["format_version"] != 1:
-            raise ValueError("unsupported training target metadata")
-        parameters = metadata["parameters"]
         projector = TwoSidedRandomProjection(
-            tuple(parameter["shape"] for parameter in parameters),
+            tuple(parameter.shape for parameter in training_run.parameters),
             arguments.output_dimension,
             seed=arguments.seed,
             device="cpu",
         )
-        projection_parameters = [
-            {"name": parameter["name"], "shape": parameter["shape"]}
-            for parameter in parameters
-        ]
-    except (KeyError, OSError, TypeError, ValueError, json.JSONDecodeError) as error:
+    except (TypeError, ValueError) as error:
         raise CommandError(f"cannot initialize projection: {error}") from error
 
     manifest = {
@@ -152,7 +336,6 @@ def run_init(arguments: argparse.Namespace) -> None:
         **source,
         "output_dimension": projector.output_dimension,
         "seed": projector.seed,
-        "parameters": projection_parameters,
     }
     try:
         projection_directory.mkdir(parents=True)
@@ -173,11 +356,16 @@ def run_init(arguments: argparse.Namespace) -> None:
 
 
 def run_apply(arguments: argparse.Namespace) -> None:
-    _require_flat_name(arguments.projection_name, "projection name")
+    require_flat_name(arguments.experiment_name, "experiment name")
+    require_flat_name(arguments.training_run_name, "training run name")
+    require_flat_name(arguments.projection_name, "projection name")
     collection_name = "training-pool" if arguments.training_pool else "query-pool"
     experiment_directory = Path("experiments") / arguments.experiment_name
+    training_run_directory = (
+        experiment_directory / "training-runs" / arguments.training_run_name
+    )
     projection_directory = (
-        experiment_directory / "trackstar" / "projections" / arguments.projection_name
+        training_run_directory / "projections" / arguments.projection_name
     )
     projection_manifest_path = projection_directory / "manifest.yaml"
     matrices_path = projection_directory / "matrices.pt"
@@ -193,18 +381,18 @@ def run_apply(arguments: argparse.Namespace) -> None:
         projection_manifest = yaml.safe_load(
             projection_manifest_path.read_text(encoding="utf-8")
         )
-        if projection_manifest["type"] != "two-sided":
+        if not isinstance(projection_manifest, dict):
+            raise ValueError("projection manifest must be a mapping")
+        if projection_manifest.get("type") != "two-sided":
             raise ValueError("unsupported projection type")
-        target, training_run = resolve_training_checkpoint(
-            experiment_directory,
+        checkpoint, training_run, _, checkpoint_step = resolve_training_checkpoint(
+            training_run_directory,
             projection_manifest,
         )
-        projection_parameters = projection_manifest["parameters"]
         matrices = torch.load(matrices_path, map_location="cpu", weights_only=True)
     except CommandError:
         raise
     except (
-        KeyError,
         OSError,
         RuntimeError,
         TypeError,
@@ -218,13 +406,11 @@ def run_apply(arguments: argparse.Namespace) -> None:
         "plan": experiment_directory / "plan.json",
         "encoded utterances": experiment_directory / "sampled_utterances_encoded.jsonl",
         "speaker embeddings": experiment_directory / "speaker_embeddings.pt",
-        "training target metadata": target / "metadata.json",
-        "optimizer": target / "optimizer.pt",
+        "optimizer": checkpoint / "optimizer.pt",
     }
     missing = [name for name, path in paths.items() if not path.is_file()]
-    if missing or not is_lora_checkpoint_complete(target):
-        details = ", ".join(missing) if missing else str(target)
-        raise CommandError(f"projection input is incomplete: {details}")
+    if missing:
+        raise CommandError(f"projection input is incomplete: {', '.join(missing)}")
 
     try:
         device = torch.device(arguments.device)
@@ -236,16 +422,11 @@ def run_apply(arguments: argparse.Namespace) -> None:
     try:
         experiment = ExperimentManifest.from_yaml(paths["experiment manifest"])
         plan = Plan.from_json(paths["plan"])
-        if training_run.training_set != "training-pool":
-            raise ValueError("projection requires a training-pool run")
         encoded = UtteranceDataset.from_jsonl(paths["encoded utterances"])
         speaker_embeddings = torch.load(
             paths["speaker embeddings"],
             map_location="cpu",
             weights_only=True,
-        )
-        target_metadata = json.loads(
-            paths["training target metadata"].read_text(encoding="utf-8")
         )
         projector = TwoSidedRandomProjection.from_matrices(
             matrices["left_matrices"],
@@ -261,7 +442,6 @@ def run_apply(arguments: argparse.Namespace) -> None:
         RuntimeError,
         TypeError,
         ValueError,
-        json.JSONDecodeError,
         yaml.YAMLError,
     ) as error:
         raise CommandError(f"cannot load projection inputs: {error}") from error
@@ -295,7 +475,7 @@ def run_apply(arguments: argparse.Namespace) -> None:
             Any,
             PeftModel.from_pretrained(
                 model.talker,
-                target / "adapter",
+                checkpoint / "adapter",
                 is_trainable=True,
             ),
         )
@@ -305,34 +485,34 @@ def run_apply(arguments: argparse.Namespace) -> None:
             if parameter.requires_grad
         )
         actual_layout = [
-            {"name": name, "shape": list(parameter.shape)}
+            (
+                name,
+                tuple(parameter.shape),
+                str(parameter.dtype).removeprefix("torch."),
+            )
             for name, parameter in trainable_parameters
         ]
-        target_layout = [
-            {"name": parameter["name"], "shape": parameter["shape"]}
-            for parameter in target_metadata["parameters"]
+        expected_layout = [
+            (parameter.name, parameter.shape, parameter.dtype)
+            for parameter in training_run.parameters
         ]
-        if actual_layout != target_layout or actual_layout != projection_parameters:
-            raise ValueError("trainable parameter layout differs from the projection")
+        if actual_layout != expected_layout:
+            raise ValueError("trainable parameter layout differs from the training run")
         parameter_names = [name for name, _ in trainable_parameters]
-        target_parameter_names = [
-            name for group in target_metadata["parameter_groups"] for name in group
+        expected_parameter_names = [
+            name for group in training_run.parameter_groups for name in group
         ]
-        if parameter_names != target_parameter_names:
+        if parameter_names != expected_parameter_names:
             raise ValueError("optimizer parameter ordering differs from the model")
 
-        optimizer = AdamW(
-            (parameter for _, parameter in trainable_parameters),
-            lr=training_run.learning_rate,
-            betas=training_run.adam_betas,
-            eps=training_run.adam_epsilon,
-            weight_decay=training_run.weight_decay,
-        )
-        optimizer.load_state_dict(
-            torch.load(paths["optimizer"], map_location="cpu", weights_only=True)
+        optimizer = _load_adamw_optimizer(
+            trainable_parameters,
+            training_run,
+            paths["optimizer"],
+            checkpoint_step,
         )
     except (KeyError, OSError, RuntimeError, TypeError, ValueError) as error:
-        raise CommandError(f"cannot load training target: {error}") from error
+        raise CommandError(f"cannot load training checkpoint: {error}") from error
 
     dataset = UtteranceDataset(utterances)
     data_loader = DataLoader(
@@ -370,15 +550,17 @@ def run_apply(arguments: argparse.Namespace) -> None:
             f"projected gradient count differs from the {collection_name}"
         )
 
+    projected = torch.stack(projected_gradients)
+    if not projected.is_floating_point() or not torch.isfinite(projected).all():
+        raise CommandError("projected gradients must be finite floating point values")
     try:
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        torch.save(
+        save_immutable_torch_artifact(
+            output_path,
             {
                 "ids": list(identifiers),
-                "projected_gradients": torch.stack(projected_gradients),
+                "projected_gradients": projected,
             },
-            output_path,
         )
-    except (OSError, RuntimeError) as error:
+    except (FileExistsError, OSError, RuntimeError) as error:
         raise CommandError(f"cannot save projected gradients: {error}") from error
     print(f"projected {collection_name} gradients saved at {output_path}")

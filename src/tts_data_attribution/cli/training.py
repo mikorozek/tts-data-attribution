@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
@@ -13,15 +14,25 @@ from torch.optim import AdamW
 from torch.utils.data import DataLoader
 
 from ..dataset import UtteranceDataset
-from ..experiment import ExperimentManifest, Plan, TrainingRunManifest
-from ..models import apply_lora, save_lora_checkpoint, train
+from ..experiment import (
+    ExperimentManifest,
+    Plan,
+    TrainingParameter,
+    TrainingRunManifest,
+)
+from ..models import (
+    apply_lora,
+    lora_parameter_layout,
+    save_lora_checkpoint,
+    train,
+)
 from ..models.qwen3_tts import (
     LORA_TARGET_MODULES,
     collate,
     load_model,
     objective,
 )
-from .errors import CommandError
+from .errors import CommandError, require_flat_name
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:
@@ -32,17 +43,6 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         "configure", help="configure a training run"
     )
     configure_parser.add_argument("experiment_name", metavar="experiment-name")
-    selection = configure_parser.add_mutually_exclusive_group(required=True)
-    selection.add_argument(
-        "--training-pool",
-        action="store_true",
-        help="train the complete training pool",
-    )
-    selection.add_argument(
-        "--subset",
-        metavar="subset-id",
-        help="train one named subset",
-    )
     configure_parser.add_argument(
         "--dtype", choices=["bfloat16", "float32"], default="bfloat16"
     )
@@ -60,10 +60,21 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     configure_parser.set_defaults(run=run_configure)
 
     start_parser = training_subparsers.add_parser(
-        "start", help="start a configured training run"
+        "start", help="train one model in a configured training run"
     )
     start_parser.add_argument("experiment_name", metavar="experiment-name")
     start_parser.add_argument("training_run_name", metavar="training-run-name")
+    selection = start_parser.add_mutually_exclusive_group(required=True)
+    selection.add_argument(
+        "--training-pool",
+        action="store_true",
+        help="train the complete training pool",
+    )
+    selection.add_argument(
+        "--subset",
+        metavar="subset-id",
+        help="train one named subset",
+    )
     start_parser.add_argument(
         "--device",
         default="cuda:0",
@@ -73,6 +84,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
 
 
 def run_configure(arguments: argparse.Namespace) -> None:
+    require_flat_name(arguments.experiment_name, "experiment name")
     experiment_directory = Path("experiments") / arguments.experiment_name
     manifest_path = experiment_directory / "manifest.yaml"
     plan_path = experiment_directory / "plan.json"
@@ -83,20 +95,7 @@ def run_configure(arguments: argparse.Namespace) -> None:
         )
 
     try:
-        plan = Plan.from_json(plan_path)
-    except (OSError, TypeError, ValueError) as error:
-        raise CommandError(f"cannot read experiment plan: {error}") from error
-
-    if arguments.training_pool:
-        training_set = "training-pool"
-    else:
-        training_set = arguments.subset
-        if training_set not in plan.subsets:
-            raise CommandError(f"unknown training subset: {training_set}")
-
-    try:
         manifest = TrainingRunManifest(
-            training_set=training_set,
             dtype=arguments.dtype,
             lora_rank=arguments.lora_rank,
             lora_alpha=arguments.lora_alpha,
@@ -109,11 +108,12 @@ def run_configure(arguments: argparse.Namespace) -> None:
             batch_size=arguments.batch_size,
             seed=arguments.seed,
         )
-    except ValueError as error:
-        raise CommandError(str(error)) from error
+        Plan.from_json(plan_path)
+    except (OSError, TypeError, ValueError) as error:
+        raise CommandError(f"cannot configure training run: {error}") from error
 
     timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
-    training_run_name = f"{training_set}-{timestamp}"
+    training_run_name = f"run-{timestamp}"
     training_run_directory = experiment_directory / "training-runs" / training_run_name
     try:
         training_run_directory.mkdir(parents=True)
@@ -123,15 +123,44 @@ def run_configure(arguments: argparse.Namespace) -> None:
     print(f"training run {training_run_name} configured at {training_run_directory}")
 
 
+def _write_resolved_manifest(
+    path: Path,
+    config: TrainingRunManifest,
+    model: PeftModel,
+    optimizer: AdamW,
+) -> TrainingRunManifest:
+    parameters, parameter_groups = lora_parameter_layout(model, optimizer)
+    resolved = replace(
+        config,
+        parameters=tuple(
+            TrainingParameter(
+                name=cast(str, parameter["name"]),
+                shape=tuple(cast(list[int], parameter["shape"])),
+                dtype=cast(str, parameter["dtype"]),
+            )
+            for parameter in parameters
+        ),
+        parameter_groups=tuple(tuple(group) for group in parameter_groups),
+    )
+    if config.parameters:
+        if config != resolved:
+            raise ValueError("model parameter layout differs from the training run")
+        return config
+    temporary_path = path.with_name(f".{path.name}.tmp")
+    resolved.to_yaml(temporary_path)
+    temporary_path.replace(path)
+    return resolved
+
+
 def run_start(arguments: argparse.Namespace) -> None:
-    if Path(arguments.training_run_name).name != arguments.training_run_name:
-        raise CommandError("training run name must be a single path component")
+    require_flat_name(arguments.experiment_name, "experiment name")
+    require_flat_name(arguments.training_run_name, "training run name")
     experiment_directory = Path("experiments") / arguments.experiment_name
     training_run_directory = (
         experiment_directory / "training-runs" / arguments.training_run_name
     )
     paths = {
-        "manifest": experiment_directory / "manifest.yaml",
+        "experiment manifest": experiment_directory / "manifest.yaml",
         "plan": experiment_directory / "plan.json",
         "training run manifest": training_run_directory / "manifest.yaml",
         "encoded utterances": experiment_directory / "sampled_utterances_encoded.jsonl",
@@ -141,15 +170,8 @@ def run_start(arguments: argparse.Namespace) -> None:
     if missing:
         raise CommandError(f"experiment is missing: {', '.join(missing)}")
 
-    target = training_run_directory / "target"
-    metrics_path = training_run_directory / "metrics.jsonl"
-    if target.exists() or metrics_path.exists():
-        raise CommandError(
-            f"training run {arguments.training_run_name} has already started"
-        )
-
     try:
-        experiment = ExperimentManifest.from_yaml(paths["manifest"])
+        experiment = ExperimentManifest.from_yaml(paths["experiment manifest"])
         plan = Plan.from_json(paths["plan"])
         config = TrainingRunManifest.from_yaml(paths["training run manifest"])
         encoded = UtteranceDataset.from_jsonl(paths["encoded utterances"])
@@ -161,6 +183,22 @@ def run_start(arguments: argparse.Namespace) -> None:
     except (OSError, RuntimeError, TypeError, ValueError, yaml.YAMLError) as error:
         raise CommandError(f"cannot read experiment: {error}") from error
 
+    if arguments.training_pool:
+        training_ids = plan.training_pool
+        model_name = "training-pool"
+        model_directory = training_run_directory / "training-pool"
+    else:
+        subset_id = arguments.subset
+        if subset_id not in plan.subsets:
+            raise CommandError(f"unknown training subset: {subset_id}")
+        training_ids = plan.subsets[subset_id]
+        model_name = subset_id
+        model_directory = training_run_directory / "subsets" / subset_id
+    if model_directory.exists():
+        raise CommandError(f"training model {model_name} has already started")
+    if not arguments.training_pool and not config.parameters:
+        raise CommandError("the training-pool model must be started before subsets")
+
     if experiment.model != "qwen3-tts":
         raise CommandError(f"training is not implemented for model {experiment.model}")
     if not isinstance(speaker_embeddings, dict) or not all(
@@ -168,13 +206,6 @@ def run_start(arguments: argparse.Namespace) -> None:
         for name, embedding in speaker_embeddings.items()
     ):
         raise CommandError("speaker embeddings must map speaker names to tensors")
-
-    if config.training_set == "training-pool":
-        training_ids = plan.training_pool
-    elif config.training_set in plan.subsets:
-        training_ids = plan.subsets[config.training_set]
-    else:
-        raise CommandError(f"unknown training set: {config.training_set}")
 
     required_ids = set(plan.validation_pool) | set(training_ids)
     missing_ids = sorted(required_ids - encoded.ids())
@@ -219,59 +250,60 @@ def run_start(arguments: argparse.Namespace) -> None:
     )
     dtype = {"bfloat16": torch.bfloat16, "float32": torch.float32}[config.dtype]
 
-    model = load_model(
-        experiment.model_path,
-        device=device,
-        dtype=dtype,
-    )
-    model.talker = cast(
-        Any,
-        apply_lora(
-            model.talker,
-            LoraConfig(
-                r=config.lora_rank,
-                lora_alpha=config.lora_alpha,
-                lora_dropout=config.lora_dropout,
-                bias="none",
-                target_modules=list(LORA_TARGET_MODULES),
+    try:
+        model = load_model(experiment.model_path, device=device, dtype=dtype)
+        model.talker = cast(
+            Any,
+            apply_lora(
+                model.talker,
+                LoraConfig(
+                    r=config.lora_rank,
+                    lora_alpha=config.lora_alpha,
+                    lora_dropout=config.lora_dropout,
+                    bias="none",
+                    target_modules=list(LORA_TARGET_MODULES),
+                ),
+                seed=config.seed,
             ),
-            seed=config.seed,
-        ),
-    )
-    optimizer = AdamW(
-        (
-            parameter
-            for parameter in model.talker.parameters()
-            if parameter.requires_grad
-        ),
-        lr=config.learning_rate,
-        betas=config.adam_betas,
-        eps=config.adam_epsilon,
-        weight_decay=config.weight_decay,
-    )
-
-    best_checkpoint_path = training_run_directory / "best-checkpoint.json"
-    best_validation_loss = float("inf")
-
-    def write_checkpoint_context(
-        checkpoint: Path,
-        metrics: dict[str, int | float],
-    ) -> None:
-        (checkpoint / "training-run.yaml").write_bytes(
-            paths["training run manifest"].read_bytes()
         )
-        (checkpoint / "metrics.json").write_text(
-            json.dumps(metrics, indent=2, sort_keys=True) + "\n",
-            encoding="utf-8",
+        optimizer = AdamW(
+            (
+                parameter
+                for parameter in model.talker.parameters()
+                if parameter.requires_grad
+            ),
+            lr=config.learning_rate,
+            betas=config.adam_betas,
+            eps=config.adam_epsilon,
+            weight_decay=config.weight_decay,
         )
+        config = _write_resolved_manifest(
+            paths["training run manifest"],
+            config,
+            cast(PeftModel, model.talker),
+            optimizer,
+        )
+    except (OSError, TypeError, ValueError) as error:
+        raise CommandError(f"cannot prepare training model: {error}") from error
+
+    try:
+        model_directory.mkdir(parents=True)
+    except OSError as error:
+        raise CommandError(
+            f"cannot create training model directory: {error}"
+        ) from error
+    metrics_path = model_directory / "metrics.jsonl"
 
     def report_epoch(metrics: dict[str, int | float]) -> None:
-        nonlocal best_validation_loss
         with metrics_path.open("a", encoding="utf-8") as output:
             output.write(json.dumps(metrics, sort_keys=True) + "\n")
         print(
             json.dumps(
-                {"training_run": arguments.training_run_name, **metrics},
+                {
+                    "training_run": arguments.training_run_name,
+                    "model": model_name,
+                    **metrics,
+                },
                 sort_keys=True,
             ),
             flush=True,
@@ -279,34 +311,15 @@ def run_start(arguments: argparse.Namespace) -> None:
         epoch = int(metrics["epoch"])
         if epoch == 0:
             return
-        checkpoint = training_run_directory / "checkpoints" / f"epoch-{epoch:04d}"
+        checkpoint = model_directory / "checkpoints" / f"epoch-{epoch:04d}"
         save_lora_checkpoint(
             checkpoint,
             cast(PeftModel, model.talker),
             optimizer,
-            epoch=epoch,
-            step=int(metrics["step"]),
+            metrics,
         )
-        write_checkpoint_context(checkpoint, metrics)
-        validation_loss = float(metrics["validation_loss"])
-        if validation_loss < best_validation_loss:
-            best_validation_loss = validation_loss
-            best_checkpoint_path.write_text(
-                json.dumps(
-                    {
-                        "checkpoint": str(
-                            checkpoint.relative_to(training_run_directory)
-                        ),
-                        **metrics,
-                    },
-                    indent=2,
-                    sort_keys=True,
-                )
-                + "\n",
-                encoding="utf-8",
-            )
 
-    history = train(
+    train(
         model,
         training_loader,
         training_evaluation_loader,
@@ -317,12 +330,4 @@ def run_start(arguments: argparse.Namespace) -> None:
         device,
         report_epoch,
     )
-    save_lora_checkpoint(
-        target,
-        cast(PeftModel, model.talker),
-        optimizer,
-        epoch=config.epochs,
-        step=int(history[-1]["step"]),
-    )
-    write_checkpoint_context(target, history[-1])
-    print(f"training target saved at {target}")
+    print(f"training model saved at {model_directory}")

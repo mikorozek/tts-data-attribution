@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import pytest
 import torch
 from peft import LoraConfig, PeftModel
 from torch import nn
 from transformers import PretrainedConfig, PreTrainedModel
 
 from tts_data_attribution.models import apply_lora
+from tts_data_attribution.models.lora import validate_checkpoint_metrics
 
 
 class TinyDecoderConfig(PretrainedConfig):
@@ -119,3 +121,33 @@ def test_apply_lora_uses_the_requested_initialization_seed() -> None:
         torch.equal(parameter, second_trainable[name])
         for name, parameter in first_trainable.items()
     )
+
+
+@pytest.mark.parametrize(
+    "metrics",
+    [
+        [],
+        {"epoch": 1, "step": 1, "training_loss": 1.0},
+        {
+            "epoch": 0,
+            "step": 1,
+            "training_loss": 1.0,
+            "validation_loss": 1.0,
+        },
+        {
+            "epoch": 1,
+            "step": 0,
+            "training_loss": 1.0,
+            "validation_loss": 1.0,
+        },
+        {
+            "epoch": 1,
+            "step": 1,
+            "training_loss": float("nan"),
+            "validation_loss": 1.0,
+        },
+    ],
+)
+def test_checkpoint_metrics_require_the_exact_finite_schema(metrics: object) -> None:
+    with pytest.raises(ValueError, match="checkpoint"):
+        validate_checkpoint_metrics(metrics)
