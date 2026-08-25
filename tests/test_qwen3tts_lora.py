@@ -241,8 +241,10 @@ def test_train_processes_every_batch_and_evaluates_without_gradients(
     assert [metrics["epoch"] for metrics in history] == [0, 1, 2]
     assert [metrics["step"] for metrics in history] == [0, 2, 4]
     assert history[0]["training_loss"] > history[-1]["training_loss"]
-    assert "optimization_loss" not in history[0]
-    assert all("optimization_loss" in metrics for metrics in history[1:])
+    assert all(
+        set(metrics) == {"epoch", "step", "training_loss", "validation_loss"}
+        for metrics in history
+    )
     assert all(
         torch.isfinite(torch.tensor(value))
         for metrics in history

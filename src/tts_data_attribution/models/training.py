@@ -71,8 +71,7 @@ def train(
     step = 0
     for epoch in range(1, epochs + 1):
         model.train()
-        total_loss = 0.0
-        example_count = 0
+        batch_count = 0
         for batch in training_loader:
             batch = {name: tensor.to(device) for name, tensor in batch.items()}
             optimizer.zero_grad(set_to_none=True)
@@ -80,14 +79,12 @@ def train(
             losses.mean().backward()
             optimizer.step()
             step += 1
-            total_loss += losses.detach().sum().item()
-            example_count += losses.numel()
-        if example_count == 0:
+            batch_count += 1
+        if batch_count == 0:
             raise ValueError("cannot train with an empty data loader")
         metrics: dict[str, int | float] = {
             "epoch": epoch,
             "step": step,
-            "optimization_loss": total_loss / example_count,
             "training_loss": evaluate(
                 model,
                 training_evaluation_loader,
