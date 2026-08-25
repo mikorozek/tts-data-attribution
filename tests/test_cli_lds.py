@@ -47,14 +47,20 @@ def training_manifest(training_set: str) -> TrainingRunManifest:
     )
 
 
-def create_complete_target(run_directory: Path) -> None:
-    target = run_directory / "target"
-    adapter = target / "adapter"
+def create_complete_checkpoint(checkpoint: Path, epoch: int = 3) -> None:
+    adapter = checkpoint / "adapter"
     adapter.mkdir(parents=True)
     (adapter / "adapter_config.json").write_text("{}", encoding="utf-8")
     (adapter / "adapter_model.safetensors").write_bytes(b"adapter")
-    torch.save({}, target / "optimizer.pt")
-    (target / "metadata.json").write_text("{}", encoding="utf-8")
+    torch.save({}, checkpoint / "optimizer.pt")
+    (checkpoint / "metadata.json").write_text(
+        f'{{"epoch": {epoch}}}',
+        encoding="utf-8",
+    )
+
+
+def create_complete_target(run_directory: Path) -> None:
+    create_complete_checkpoint(run_directory / "target")
 
 
 def create_lds_experiment(root: Path) -> Path:
@@ -103,6 +109,7 @@ def create_lds_experiment(root: Path) -> Path:
     full_run = experiment / "training-runs" / full_run_name
     full_run.mkdir(parents=True)
     training_manifest("training-pool").to_yaml(full_run / "manifest.yaml")
+    create_complete_target(full_run)
 
     for index, subset_id in enumerate(plan.subsets):
         run = experiment / "training-runs" / f"{subset_id}-20260820T12000{index}000000Z"
@@ -236,6 +243,40 @@ def test_lds_compute_discovers_completed_subsets_and_saves_detailed_results(
         torch.ones(1000, dtype=torch.float64),
     )
     assert result["confidence_interval"] == pytest.approx((1.0, 1.0))
+
+
+def test_lds_compute_uses_the_selected_checkpoint_epoch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    experiment = create_lds_experiment(tmp_path)
+    checkpoint = experiment / "training-checkpoints" / "epoch-0002"
+    create_complete_checkpoint(checkpoint, epoch=2)
+    training_manifest("training-pool").to_yaml(checkpoint / "training-run.yaml")
+    for run in (experiment / "training-runs").iterdir():
+        if not (run / "target" / "optimizer.pt").is_file():
+            continue
+        manifest_path = run / "manifest.yaml"
+        manifest = TrainingRunManifest.from_yaml(manifest_path)
+        if manifest.training_set in {"subset-0000", "subset-0001", "subset-0002"}:
+            replace(manifest, epochs=2).to_yaml(manifest_path)
+    projection_manifest = (
+        experiment / "trackstar" / "projections" / "two-sided-4" / "manifest.yaml"
+    )
+    manifest = yaml.safe_load(projection_manifest.read_text(encoding="utf-8"))
+    manifest.pop("training_run")
+    manifest["training_checkpoint"] = checkpoint.relative_to(experiment).as_posix()
+    projection_manifest.write_text(yaml.safe_dump(manifest), encoding="utf-8")
+    install_fake_model(monkeypatch)
+
+    assert main(arguments()) == 0
+
+    result = torch.load(
+        experiment / "trackstar" / "projections" / "two-sided-4" / "lds.pt",
+        weights_only=True,
+    )
+    assert result["subset_ids"] == ["subset-0000", "subset-0001", "subset-0002"]
 
 
 def test_lds_compute_rejects_multiple_completed_runs_for_one_subset(

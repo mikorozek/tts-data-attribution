@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, cast
 
@@ -34,10 +35,15 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     )
     init_parser.add_argument("experiment_name", metavar="experiment-name")
     init_parser.add_argument("projection_name", metavar="projection-name")
-    init_parser.add_argument(
+    training_source = init_parser.add_mutually_exclusive_group(required=True)
+    training_source.add_argument(
         "--training-run",
-        required=True,
         metavar="training-run-name",
+    )
+    training_source.add_argument(
+        "--training-checkpoint",
+        metavar="checkpoint-path",
+        help="checkpoint path relative to the experiment directory",
     )
     init_parser.add_argument("--output-dimension", type=int, required=True)
     init_parser.add_argument("--seed", type=int, required=True)
@@ -72,30 +78,68 @@ def _require_flat_name(value: str, name: str) -> None:
         raise CommandError(f"{name} must be a single path component")
 
 
+def resolve_training_source(
+    experiment_directory: Path,
+    source: dict[str, object],
+) -> tuple[Path, TrainingRunManifest]:
+    if "training_checkpoint" in source:
+        value = source["training_checkpoint"]
+        if not isinstance(value, str) or not value:
+            raise CommandError("training checkpoint must be a relative path")
+        relative_path = Path(value)
+        if relative_path.is_absolute() or ".." in relative_path.parts:
+            raise CommandError("training checkpoint must be a safe relative path")
+        checkpoint = experiment_directory / relative_path
+        manifest_path = checkpoint / "training-run.yaml"
+    else:
+        value = source.get("training_run")
+        if not isinstance(value, str):
+            raise CommandError("projection training source is missing")
+        _require_flat_name(value, "training run name")
+        run_directory = experiment_directory / "training-runs" / value
+        checkpoint = run_directory / "target"
+        manifest_path = run_directory / "manifest.yaml"
+    if not manifest_path.is_file():
+        raise CommandError(f"training manifest is missing at {manifest_path}")
+    if not is_lora_checkpoint_complete(checkpoint):
+        raise CommandError(f"training checkpoint is incomplete at {checkpoint}")
+    try:
+        training_run = TrainingRunManifest.from_yaml(manifest_path)
+        metadata = json.loads(
+            (checkpoint / "metadata.json").read_text(encoding="utf-8")
+        )
+        checkpoint_epoch = metadata["epoch"]
+        if type(checkpoint_epoch) is not int or checkpoint_epoch < 1:
+            raise ValueError("checkpoint epoch must be a positive integer")
+    except (
+        KeyError,
+        OSError,
+        TypeError,
+        ValueError,
+        json.JSONDecodeError,
+        yaml.YAMLError,
+    ) as error:
+        raise CommandError(f"cannot read training checkpoint: {error}") from error
+    return checkpoint, replace(training_run, epochs=checkpoint_epoch)
+
+
 def run_init(arguments: argparse.Namespace) -> None:
-    _require_flat_name(arguments.training_run, "training run name")
     _require_flat_name(arguments.projection_name, "projection name")
+    if arguments.training_run is not None:
+        _require_flat_name(arguments.training_run, "training run name")
     if arguments.seed < 0:
         raise CommandError("projection seed must not be negative")
 
     experiment_directory = Path("experiments") / arguments.experiment_name
-    training_run_directory = (
-        experiment_directory / "training-runs" / arguments.training_run
-    )
-    target = training_run_directory / "target"
     if not (experiment_directory / "manifest.yaml").is_file():
         raise CommandError(f"experiment {arguments.experiment_name} does not exist")
-    training_run_manifest_path = training_run_directory / "manifest.yaml"
-    if not training_run_manifest_path.is_file():
-        raise CommandError(f"training run {arguments.training_run} does not exist")
-    try:
-        training_run = TrainingRunManifest.from_yaml(training_run_manifest_path)
-    except (OSError, TypeError, ValueError, yaml.YAMLError) as error:
-        raise CommandError(f"cannot read training run: {error}") from error
+    if arguments.training_checkpoint is not None:
+        source = {"training_checkpoint": arguments.training_checkpoint}
+    else:
+        source = {"training_run": arguments.training_run}
+    target, training_run = resolve_training_source(experiment_directory, source)
     if training_run.training_set != "training-pool":
         raise CommandError("projection requires a training-pool run")
-    if not is_lora_checkpoint_complete(target):
-        raise CommandError(f"training target is incomplete at {target}")
 
     projection_directory = (
         experiment_directory / "trackstar" / "projections" / arguments.projection_name
@@ -123,7 +167,7 @@ def run_init(arguments: argparse.Namespace) -> None:
 
     manifest = {
         "type": "two-sided",
-        "training_run": arguments.training_run,
+        **source,
         "output_dimension": projector.output_dimension,
         "seed": projector.seed,
         "parameters": projection_parameters,
@@ -169,10 +213,10 @@ def run_apply(arguments: argparse.Namespace) -> None:
         )
         if projection_manifest["type"] != "two-sided":
             raise ValueError("unsupported projection type")
-        training_run_name = projection_manifest["training_run"]
-        if not isinstance(training_run_name, str):
-            raise TypeError("projection training run must be a string")
-        _require_flat_name(training_run_name, "training run name")
+        target, training_run = resolve_training_source(
+            experiment_directory,
+            projection_manifest,
+        )
         projection_parameters = projection_manifest["parameters"]
         matrices = torch.load(matrices_path, map_location="cpu", weights_only=True)
     except CommandError:
@@ -187,12 +231,9 @@ def run_apply(arguments: argparse.Namespace) -> None:
     ) as error:
         raise CommandError(f"cannot read projection: {error}") from error
 
-    training_run_directory = experiment_directory / "training-runs" / training_run_name
-    target = training_run_directory / "target"
     paths = {
         "experiment manifest": experiment_directory / "manifest.yaml",
         "plan": experiment_directory / "plan.json",
-        "training run manifest": training_run_directory / "manifest.yaml",
         "encoded utterances": experiment_directory / "sampled_utterances_encoded.jsonl",
         "speaker embeddings": experiment_directory / "speaker_embeddings.pt",
         "training target metadata": target / "metadata.json",
@@ -213,7 +254,6 @@ def run_apply(arguments: argparse.Namespace) -> None:
     try:
         experiment = ExperimentManifest.from_yaml(paths["experiment manifest"])
         plan = Plan.from_json(paths["plan"])
-        training_run = TrainingRunManifest.from_yaml(paths["training run manifest"])
         if training_run.training_set != "training-pool":
             raise ValueError("projection requires a training-pool run")
         encoded = UtteranceDataset.from_jsonl(paths["encoded utterances"])

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 
 import pytest
@@ -135,6 +136,32 @@ def init_arguments() -> list[str]:
     ]
 
 
+def create_selected_checkpoint(experiment: Path) -> Path:
+    run = experiment / "training-runs" / "training-pool-20260820T120000000000Z"
+    checkpoint = run / "checkpoints" / "epoch-0002"
+    shutil.copytree(run / "target", checkpoint)
+    shutil.copy2(run / "manifest.yaml", checkpoint / "training-run.yaml")
+    metadata = json.loads((checkpoint / "metadata.json").read_text())
+    metadata["epoch"] = 2
+    (checkpoint / "metadata.json").write_text(json.dumps(metadata))
+    return checkpoint.relative_to(experiment)
+
+
+def checkpoint_init_arguments(checkpoint: Path) -> list[str]:
+    return [
+        "projection",
+        "init",
+        "study",
+        "two-sided-4",
+        "--training-checkpoint",
+        checkpoint.as_posix(),
+        "--output-dimension",
+        "4",
+        "--seed",
+        "13",
+    ]
+
+
 def test_projection_init_saves_the_parameter_layout_and_random_matrices(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -177,6 +204,27 @@ def test_projection_init_saves_the_parameter_layout_and_random_matrices(
         torch.testing.assert_close(actual, expected_matrix)
 
 
+def test_projection_init_accepts_a_selected_checkpoint(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    experiment, parameters = create_training_target(tmp_path)
+    checkpoint = create_selected_checkpoint(experiment)
+
+    assert main(checkpoint_init_arguments(checkpoint)) == 0
+
+    directory = experiment / "trackstar" / "projections" / "two-sided-4"
+    manifest = yaml.safe_load((directory / "manifest.yaml").read_text())
+    assert manifest["training_checkpoint"] == checkpoint.as_posix()
+    assert "training_run" not in manifest
+    assert manifest["parameters"] == [
+        {"name": parameter["name"], "shape": parameter["shape"]}
+        for parameter in parameters
+    ]
+
+
+@pytest.mark.parametrize("selected_checkpoint", [False, True])
 @pytest.mark.parametrize(
     ("selection", "filename", "identifiers"),
     [
@@ -190,10 +238,16 @@ def test_projection_apply_projects_an_experiment_pool(
     selection: str,
     filename: str,
     identifiers: list[str],
+    selected_checkpoint: bool,
 ) -> None:
     monkeypatch.chdir(tmp_path)
     experiment, _ = create_training_target(tmp_path)
-    assert main(init_arguments()) == 0
+    if selected_checkpoint:
+        checkpoint = create_selected_checkpoint(experiment)
+        arguments = checkpoint_init_arguments(checkpoint)
+    else:
+        arguments = init_arguments()
+    assert main(arguments) == 0
 
     class FakePeftModel:
         @staticmethod
@@ -310,7 +364,7 @@ def test_projection_init_requires_a_complete_training_target(
 
     assert main(init_arguments()) == 1
 
-    assert "training target is incomplete" in capsys.readouterr().err
+    assert "training checkpoint is incomplete" in capsys.readouterr().err
     assert not (experiment / "trackstar").exists()
 
 
@@ -340,6 +394,21 @@ def test_projection_init_rejects_non_flat_names(
     assert main(arguments) == 1
 
     assert message in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("checkpoint", ["../outside", "/tmp/outside"])
+def test_projection_init_rejects_an_unsafe_checkpoint_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    checkpoint: str,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    create_training_target(tmp_path)
+
+    assert main(checkpoint_init_arguments(Path(checkpoint))) == 1
+
+    assert "safe relative path" in capsys.readouterr().err
 
 
 def test_projection_init_validates_projection_dimension_and_seed(

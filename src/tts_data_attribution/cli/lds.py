@@ -15,9 +15,10 @@ from ..evaluation import (
     discover_completed_subset_runs,
     save_immutable_torch_artifact,
 )
-from ..experiment import ExperimentManifest, Plan, TrainingRunManifest
+from ..experiment import ExperimentManifest, Plan
 from ..models import EXPERIMENT_ADAPTER_RESPONSE_EVALUATORS
 from .errors import CommandError
+from .projection import resolve_training_source
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:
@@ -93,18 +94,9 @@ def run_compute(arguments: argparse.Namespace) -> None:
         )
         if not isinstance(projection_manifest, dict):
             raise ValueError("projection manifest must be a mapping")
-        full_training_run_name = projection_manifest["training_run"]
-        if (
-            not isinstance(full_training_run_name, str)
-            or not full_training_run_name
-            or Path(full_training_run_name).name != full_training_run_name
-        ):
-            raise ValueError("projection training run must be a single path component")
-        full_training_run = TrainingRunManifest.from_yaml(
-            experiment_directory
-            / "training-runs"
-            / full_training_run_name
-            / "manifest.yaml"
+        _, full_training_run = resolve_training_source(
+            experiment_directory,
+            projection_manifest,
         )
         if full_training_run.training_set != "training-pool":
             raise ValueError("projection must reference a training-pool run")
