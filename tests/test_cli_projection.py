@@ -81,7 +81,7 @@ def create_training_target(
     run = experiment / "training-runs" / run_name
     target = run / "target"
     (target / "adapter").mkdir(parents=True)
-    TrainingRunManifest(
+    training_run = TrainingRunManifest(
         training_set=training_set,
         dtype="bfloat16",
         lora_rank=8,
@@ -94,7 +94,9 @@ def create_training_target(
         epochs=3,
         batch_size=1,
         seed=7,
-    ).to_yaml(run / "manifest.yaml")
+    )
+    training_run.to_yaml(run / "manifest.yaml")
+    training_run.to_yaml(target / "training-run.yaml")
     (target / "adapter" / "adapter_config.json").write_text("{}")
     (target / "adapter" / "adapter_model.safetensors").write_bytes(b"adapter")
     talker = TinyTalker()
@@ -122,18 +124,9 @@ def create_training_target(
 
 
 def init_arguments() -> list[str]:
-    return [
-        "projection",
-        "init",
-        "study",
-        "two-sided-4",
-        "--training-run",
-        "training-pool-20260820T120000000000Z",
-        "--output-dimension",
-        "4",
-        "--seed",
-        "13",
-    ]
+    return checkpoint_init_arguments(
+        Path("training-runs/training-pool-20260820T120000000000Z/target")
+    )
 
 
 def create_selected_checkpoint(experiment: Path) -> Path:
@@ -174,7 +167,9 @@ def test_projection_init_saves_the_parameter_layout_and_random_matrices(
     directory = experiment / "trackstar" / "projections" / "two-sided-4"
     assert yaml.safe_load((directory / "manifest.yaml").read_text()) == {
         "type": "two-sided",
-        "training_run": "training-pool-20260820T120000000000Z",
+        "training_checkpoint": (
+            "training-runs/training-pool-20260820T120000000000Z/target"
+        ),
         "output_dimension": 4,
         "seed": 13,
         "parameters": [
@@ -342,8 +337,9 @@ def test_projection_init_rejects_a_subset_training_run(
     monkeypatch.chdir(tmp_path)
     experiment, _ = create_training_target(tmp_path, "subset-0000")
     arguments = init_arguments()
-    arguments[arguments.index("training-pool-20260820T120000000000Z")] = (
-        "subset-0000-20260820T120000000000Z"
+    checkpoint = "training-runs/training-pool-20260820T120000000000Z/target"
+    arguments[arguments.index(checkpoint)] = (
+        "training-runs/subset-0000-20260820T120000000000Z/target"
     )
 
     assert main(arguments) == 1
@@ -368,32 +364,18 @@ def test_projection_init_requires_a_complete_training_target(
     assert not (experiment / "trackstar").exists()
 
 
-@pytest.mark.parametrize(
-    ("argument", "value", "message"),
-    [
-        ("two-sided-4", "../projection", "projection name"),
-        (
-            "training-pool-20260820T120000000000Z",
-            "../training-run",
-            "training run name",
-        ),
-    ],
-)
-def test_projection_init_rejects_non_flat_names(
+def test_projection_init_rejects_a_non_flat_projection_name(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
-    argument: str,
-    value: str,
-    message: str,
 ) -> None:
     monkeypatch.chdir(tmp_path)
     arguments = init_arguments()
-    arguments[arguments.index(argument)] = value
+    arguments[arguments.index("two-sided-4")] = "../projection"
 
     assert main(arguments) == 1
 
-    assert message in capsys.readouterr().err
+    assert "projection name" in capsys.readouterr().err
 
 
 @pytest.mark.parametrize("checkpoint", ["../outside", "/tmp/outside"])

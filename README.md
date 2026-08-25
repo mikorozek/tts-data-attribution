@@ -92,27 +92,29 @@ Epoch metrics are appended to `metrics.jsonl`. A successful run writes its one
 final adapter and optimizer state atomically under `target/`.
 
 Initialize a reusable two-sided projection from the ordered LoRA parameter
-layout recorded by a completed training-pool target:
+layout recorded by a selected training-pool checkpoint:
 
 ```bash
 uv run tda projection init voice-study-1 two-sided-4096 \
-  --training-run training-pool-20260820T153012123456Z \
+  --training-checkpoint \
+    training-runs/training-pool-20260820T153012123456Z/checkpoints/epoch-0002 \
   --output-dimension 4096 --seed 1234
 ```
 
-The command stores an immutable manifest and the random left and right matrices
-under `trackstar/projections/<projection-name>/`. It does not load the model or
+The checkpoint path is relative to the experiment directory. The command reads
+its saved training configuration and epoch, then stores an immutable projection
+manifest and the random left and right matrices under
+`trackstar/projections/<projection-name>/`. It does not load the model or
 compute gradients.
 
-Apply the saved projection to every example in the training pool associated
-with its training run:
+Apply the saved projection to every example in the checkpoint's training pool:
 
 ```bash
 uv run tda projection apply voice-study-1 two-sided-4096 \
   --training-pool --device cuda:0
 ```
 
-The command reloads the final adapter and matching AdamW state, computes and
+The command reloads the selected adapter and matching AdamW state, computes and
 corrects each per-example gradient, and writes `projected/training-pool.pt`.
 Apply the same model, optimizer state, and projection to the experiment query
 pool with `--query-pool`; subset training targets are never projected.

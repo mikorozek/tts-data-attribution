@@ -35,13 +35,9 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     )
     init_parser.add_argument("experiment_name", metavar="experiment-name")
     init_parser.add_argument("projection_name", metavar="projection-name")
-    training_source = init_parser.add_mutually_exclusive_group(required=True)
-    training_source.add_argument(
-        "--training-run",
-        metavar="training-run-name",
-    )
-    training_source.add_argument(
+    init_parser.add_argument(
         "--training-checkpoint",
+        required=True,
         metavar="checkpoint-path",
         help="checkpoint path relative to the experiment directory",
     )
@@ -125,18 +121,13 @@ def resolve_training_source(
 
 def run_init(arguments: argparse.Namespace) -> None:
     _require_flat_name(arguments.projection_name, "projection name")
-    if arguments.training_run is not None:
-        _require_flat_name(arguments.training_run, "training run name")
     if arguments.seed < 0:
         raise CommandError("projection seed must not be negative")
 
     experiment_directory = Path("experiments") / arguments.experiment_name
     if not (experiment_directory / "manifest.yaml").is_file():
         raise CommandError(f"experiment {arguments.experiment_name} does not exist")
-    if arguments.training_checkpoint is not None:
-        source = {"training_checkpoint": arguments.training_checkpoint}
-    else:
-        source = {"training_run": arguments.training_run}
+    source = {"training_checkpoint": arguments.training_checkpoint}
     target, training_run = resolve_training_source(experiment_directory, source)
     if training_run.training_set != "training-pool":
         raise CommandError("projection requires a training-pool run")
