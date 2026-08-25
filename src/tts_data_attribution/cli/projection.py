@@ -74,27 +74,18 @@ def _require_flat_name(value: str, name: str) -> None:
         raise CommandError(f"{name} must be a single path component")
 
 
-def resolve_training_source(
+def resolve_training_checkpoint(
     experiment_directory: Path,
     source: dict[str, object],
 ) -> tuple[Path, TrainingRunManifest]:
-    if "training_checkpoint" in source:
-        value = source["training_checkpoint"]
-        if not isinstance(value, str) or not value:
-            raise CommandError("training checkpoint must be a relative path")
-        relative_path = Path(value)
-        if relative_path.is_absolute() or ".." in relative_path.parts:
-            raise CommandError("training checkpoint must be a safe relative path")
-        checkpoint = experiment_directory / relative_path
-        manifest_path = checkpoint / "training-run.yaml"
-    else:
-        value = source.get("training_run")
-        if not isinstance(value, str):
-            raise CommandError("projection training source is missing")
-        _require_flat_name(value, "training run name")
-        run_directory = experiment_directory / "training-runs" / value
-        checkpoint = run_directory / "target"
-        manifest_path = run_directory / "manifest.yaml"
+    value = source.get("training_checkpoint")
+    if not isinstance(value, str) or not value:
+        raise CommandError("projection training checkpoint is missing")
+    relative_path = Path(value)
+    if relative_path.is_absolute() or ".." in relative_path.parts:
+        raise CommandError("training checkpoint must be a safe relative path")
+    checkpoint = experiment_directory / relative_path
+    manifest_path = checkpoint / "training-run.yaml"
     if not manifest_path.is_file():
         raise CommandError(f"training manifest is missing at {manifest_path}")
     if not is_lora_checkpoint_complete(checkpoint):
@@ -128,7 +119,7 @@ def run_init(arguments: argparse.Namespace) -> None:
     if not (experiment_directory / "manifest.yaml").is_file():
         raise CommandError(f"experiment {arguments.experiment_name} does not exist")
     source = {"training_checkpoint": arguments.training_checkpoint}
-    target, training_run = resolve_training_source(experiment_directory, source)
+    target, training_run = resolve_training_checkpoint(experiment_directory, source)
     if training_run.training_set != "training-pool":
         raise CommandError("projection requires a training-pool run")
 
@@ -204,7 +195,7 @@ def run_apply(arguments: argparse.Namespace) -> None:
         )
         if projection_manifest["type"] != "two-sided":
             raise ValueError("unsupported projection type")
-        target, training_run = resolve_training_source(
+        target, training_run = resolve_training_checkpoint(
             experiment_directory,
             projection_manifest,
         )

@@ -18,7 +18,7 @@ from ..evaluation import (
 from ..experiment import ExperimentManifest, Plan
 from ..models import EXPERIMENT_ADAPTER_RESPONSE_EVALUATORS
 from .errors import CommandError
-from .projection import resolve_training_source
+from .projection import resolve_training_checkpoint
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:
@@ -94,7 +94,7 @@ def run_compute(arguments: argparse.Namespace) -> None:
         )
         if not isinstance(projection_manifest, dict):
             raise ValueError("projection manifest must be a mapping")
-        _, full_training_run = resolve_training_source(
+        _, full_training_run = resolve_training_checkpoint(
             experiment_directory,
             projection_manifest,
         )

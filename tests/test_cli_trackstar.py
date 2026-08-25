@@ -28,7 +28,7 @@ def create_projected_pools(root: Path) -> Path:
         yaml.safe_dump(
             {
                 "type": "two-sided",
-                "training_run": "training-pool-run",
+                "training_checkpoint": "training-checkpoints/epoch-0002",
                 "output_dimension": 4,
                 "seed": 7,
                 "parameters": [],

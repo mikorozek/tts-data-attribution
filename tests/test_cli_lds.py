@@ -108,8 +108,10 @@ def create_lds_experiment(root: Path) -> Path:
     full_run_name = "training-pool-20260820T120000000000Z"
     full_run = experiment / "training-runs" / full_run_name
     full_run.mkdir(parents=True)
-    training_manifest("training-pool").to_yaml(full_run / "manifest.yaml")
+    full_manifest = training_manifest("training-pool")
+    full_manifest.to_yaml(full_run / "manifest.yaml")
     create_complete_target(full_run)
+    full_manifest.to_yaml(full_run / "target" / "training-run.yaml")
 
     for index, subset_id in enumerate(plan.subsets):
         run = experiment / "training-runs" / f"{subset_id}-20260820T12000{index}000000Z"
@@ -127,7 +129,7 @@ def create_lds_experiment(root: Path) -> Path:
         yaml.safe_dump(
             {
                 "type": "two-sided",
-                "training_run": full_run_name,
+                "training_checkpoint": f"training-runs/{full_run_name}/target",
                 "output_dimension": 4,
                 "seed": 13,
                 "parameters": [],
@@ -265,7 +267,6 @@ def test_lds_compute_uses_the_selected_checkpoint_epoch(
         experiment / "trackstar" / "projections" / "two-sided-4" / "manifest.yaml"
     )
     manifest = yaml.safe_load(projection_manifest.read_text(encoding="utf-8"))
-    manifest.pop("training_run")
     manifest["training_checkpoint"] = checkpoint.relative_to(experiment).as_posix()
     projection_manifest.write_text(yaml.safe_dump(manifest), encoding="utf-8")
     install_fake_model(monkeypatch)
@@ -360,7 +361,7 @@ def test_lds_compute_rejects_an_unsafe_experiment_name(
     assert "experiment name must be a single path component" in capsys.readouterr().err
 
 
-def test_lds_compute_rejects_an_unsafe_persisted_training_run_name(
+def test_lds_compute_rejects_an_unsafe_persisted_checkpoint_path(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -371,9 +372,9 @@ def test_lds_compute_rejects_an_unsafe_persisted_training_run_name(
         experiment / "trackstar" / "projections" / "two-sided-4" / "manifest.yaml"
     )
     manifest = yaml.safe_load(projection_manifest.read_text(encoding="utf-8"))
-    manifest["training_run"] = "../outside"
+    manifest["training_checkpoint"] = "../outside"
     projection_manifest.write_text(yaml.safe_dump(manifest), encoding="utf-8")
 
     assert main(arguments()) == 1
 
-    assert "single path component" in capsys.readouterr().err
+    assert "safe relative path" in capsys.readouterr().err
