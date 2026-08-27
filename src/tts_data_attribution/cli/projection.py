@@ -12,16 +12,16 @@ from peft import PeftModel
 from torch.optim import AdamW
 from torch.utils.data import DataLoader
 
+from ..attribution import (
+    TwoSidedRandomProjection,
+    collect_per_example_gradients,
+    correct_gradients_with_adamw,
+)
 from ..dataset import UtteranceDataset
 from ..evaluation import save_immutable_torch_artifact
 from ..experiment import ExperimentManifest, Plan, TrainingRunManifest
 from ..models import is_lora_checkpoint_complete, load_checkpoint_metrics
 from ..models.qwen3_tts import collate, load_model, objective
-from ..trackstar import (
-    TwoSidedRandomProjection,
-    collect_per_example_gradients,
-    correct_gradients_with_adamw,
-)
 from .errors import CommandError, require_flat_name
 
 

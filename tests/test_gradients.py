@@ -4,7 +4,7 @@ import pytest
 import torch
 from torch import nn
 
-from tts_data_attribution.trackstar import (
+from tts_data_attribution.attribution import (
     collect_per_example_gradients,
     correct_gradients_with_adamw,
 )

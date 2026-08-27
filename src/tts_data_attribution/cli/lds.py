@@ -34,7 +34,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     compute_parser.add_argument(
         "attributions",
         metavar="attributions-path",
-        help="path to trackstar/attributions.pt or projected-cosine/attributions.pt",
+        help="path to attribution/attributions.pt or projected-cosine/attributions.pt",
     )
     compute_parser.add_argument(
         "--device",
@@ -53,7 +53,7 @@ def _resolve_workspace(path: Path) -> tuple[Path, Path, Path, Path]:
     training_run_directory = projection_directory.parent.parent
     if (
         path.name != "attributions.pt"
-        or method_directory.name not in {"trackstar", "projected-cosine"}
+        or method_directory.name not in {"attribution", "projected-cosine"}
         or projection_directory.parent.name != "projections"
         or training_run_directory.parent.name != "training-runs"
         or not (projection_directory / "manifest.yaml").is_file()

@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 import torch
 
-from tts_data_attribution.trackstar import GaussNewtonHessianApproximation
+from tts_data_attribution.attribution import GaussNewtonHessianApproximation
 
 
 def test_gauss_newton_hessian_matches_weighted_gradient_autocorrelation() -> None:

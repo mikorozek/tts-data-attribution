@@ -63,7 +63,7 @@ Never warm-start a subset model from a model that has already seen examples excl
 
 ### Attribution
 
-TrackStar is the first attribution backend. Its implementation should consume generic per-example gradient features and selected optimizer statistics, rather than model-specific code. Projection, optimizer correction, covariance correction, normalization, checkpoint aggregation, and storage must be independently configurable and testable.
+Autocorrelation-corrected attribution is the first attribution backend. Its implementation should consume generic per-example gradient features and selected optimizer statistics, rather than model-specific code. Projection, optimizer correction, covariance correction, normalization, checkpoint aggregation, and storage must be independently configurable and testable.
 
 Additional attribution backends should be addable behind the same user-facing interface.
 

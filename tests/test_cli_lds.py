@@ -37,7 +37,7 @@ def write_checkpoint(path: Path, epoch: int = 2) -> None:
     )
 
 
-def create_lds_experiment(root: Path, method: str = "trackstar") -> tuple[Path, Path]:
+def create_lds_experiment(root: Path, method: str = "attribution") -> tuple[Path, Path]:
     experiment = root / "experiments" / "study"
     experiment.mkdir(parents=True)
     ExperimentManifest(
@@ -154,7 +154,7 @@ def arguments(path: Path) -> list[str]:
     return ["lds", "compute", str(path), "--device", "cpu"]
 
 
-@pytest.mark.parametrize("method", ["trackstar", "projected-cosine"])
+@pytest.mark.parametrize("method", ["attribution", "projected-cosine"])
 def test_lds_compute_saves_only_the_scalar_next_to_the_attributions(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

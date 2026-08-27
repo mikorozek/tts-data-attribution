@@ -15,6 +15,12 @@ from torch import nn
 from torch.optim import AdamW
 from torch.utils.data import DataLoader
 
+from tts_data_attribution.attribution import (
+    GaussNewtonHessianApproximation,
+    TwoSidedRandomProjection,
+    collect_per_example_gradients,
+    correct_gradients_with_adamw,
+)
 from tts_data_attribution.dataset import Utterance
 from tts_data_attribution.models import (
     apply_lora,
@@ -26,12 +32,6 @@ from tts_data_attribution.models.qwen3_tts import (
     LORA_TARGET_MODULES,
     collate,
     objective,
-)
-from tts_data_attribution.trackstar import (
-    GaussNewtonHessianApproximation,
-    TwoSidedRandomProjection,
-    collect_per_example_gradients,
-    correct_gradients_with_adamw,
 )
 
 

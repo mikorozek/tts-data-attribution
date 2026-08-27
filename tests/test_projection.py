@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 import torch
 
-from tts_data_attribution.trackstar import (
+from tts_data_attribution.attribution import (
     RandomProjection,
     TwoSidedRandomProjection,
 )

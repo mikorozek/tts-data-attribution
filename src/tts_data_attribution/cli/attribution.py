@@ -6,17 +6,19 @@ from pathlib import Path
 import torch
 import yaml
 
+from ..attribution import GaussNewtonHessianApproximation
 from ..evaluation import save_immutable_torch_artifact
-from ..trackstar import GaussNewtonHessianApproximation
 from .errors import CommandError, require_flat_name
 from .projection import load_projected_pools
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:
-    trackstar_parser = subparsers.add_parser("trackstar", help="TrackStar attribution")
-    trackstar_subparsers = trackstar_parser.add_subparsers(required=True)
+    attribution_parser = subparsers.add_parser(
+        "attribution", help="autocorrelation-corrected attribution"
+    )
+    attribution_subparsers = attribution_parser.add_subparsers(required=True)
 
-    compute_parser = trackstar_subparsers.add_parser(
+    compute_parser = attribution_subparsers.add_parser(
         "compute", help="compute an attribution matrix"
     )
     compute_parser.add_argument("experiment_name", metavar="experiment-name")
@@ -47,16 +49,14 @@ def run_compute(arguments: argparse.Namespace) -> None:
         / "projections"
         / arguments.projection_name
     )
-    method_directory = projection_directory / "trackstar"
+    method_directory = projection_directory / "attribution"
     if method_directory.exists():
-        raise CommandError(
-            f"TrackStar attribution already exists at {method_directory}"
-        )
+        raise CommandError(f"attribution already exists at {method_directory}")
 
     try:
         device = torch.device(arguments.device)
     except RuntimeError as error:
-        raise CommandError(f"invalid TrackStar device: {arguments.device}") from error
+        raise CommandError(f"invalid attribution device: {arguments.device}") from error
     if device.type == "cuda" and not torch.cuda.is_available():
         raise CommandError("CUDA is not available")
 
@@ -78,7 +78,7 @@ def run_compute(arguments: argparse.Namespace) -> None:
         ValueError,
         yaml.YAMLError,
     ) as error:
-        raise CommandError(f"cannot load TrackStar inputs: {error}") from error
+        raise CommandError(f"cannot load attribution inputs: {error}") from error
 
     try:
         eigenvalues, eigenvectors = torch.linalg.eigh(hessian)
@@ -118,9 +118,9 @@ def run_compute(arguments: argparse.Namespace) -> None:
             corrected_queries / query_norms
         ).T
         if not torch.all(torch.isfinite(attributions)):
-            raise ValueError("TrackStar attribution contains non-finite values")
+            raise ValueError("attribution tensor contains non-finite values")
     except (RuntimeError, TypeError, ValueError) as error:
-        raise CommandError(f"cannot compute TrackStar attribution: {error}") from error
+        raise CommandError(f"cannot compute attribution: {error}") from error
 
     try:
         method_directory.mkdir(parents=True)
@@ -133,5 +133,5 @@ def run_compute(arguments: argparse.Namespace) -> None:
             attributions.cpu(),
         )
     except (FileExistsError, OSError, RuntimeError, yaml.YAMLError) as error:
-        raise CommandError(f"cannot save TrackStar attribution: {error}") from error
-    print(f"TrackStar attribution saved at {method_directory / 'attributions.pt'}")
+        raise CommandError(f"cannot save attribution: {error}") from error
+    print(f"attribution saved at {method_directory / 'attributions.pt'}")

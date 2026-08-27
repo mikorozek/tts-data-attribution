@@ -9,6 +9,7 @@ import yaml
 from torch import nn
 from torch.optim import AdamW
 
+from tts_data_attribution.attribution import TwoSidedRandomProjection
 from tts_data_attribution.cli import projection as projection_cli
 from tts_data_attribution.cli.main import main
 from tts_data_attribution.dataset import Utterance, UtteranceDataset
@@ -18,7 +19,6 @@ from tts_data_attribution.experiment import (
     TrainingParameter,
     TrainingRunManifest,
 )
-from tts_data_attribution.trackstar import TwoSidedRandomProjection
 
 
 class TinyTalker(nn.Module):

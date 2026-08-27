@@ -1,8 +1,8 @@
 # TTS Data Attribution
 
 Reusable PyTorch framework for data-attribution experiments validated through
-counterfactual retraining. The implemented attribution methods are TrackStar and
-projected cosine, evaluated with Linear Datamodeling Score.
+counterfactual retraining. The implemented methods are autocorrelation-corrected
+attribution and projected cosine, evaluated with Linear Datamodeling Score.
 
 The framework accepts user-provided datasets, `torch.nn.Module` models,
 per-example objectives, parameter selectors, training procedures, subset masks,
@@ -138,10 +138,10 @@ Both commands reload the explicitly selected adapter and matching AdamW state.
 They validate the parameter order, AdamW recipe, optimizer step, and moments.
 They write `projected/training-pool.pt` and `projected/query-pool.pt`.
 
-Compute TrackStar and projected cosine from the same projected gradients:
+Compute autocorrelation-corrected attribution and projected cosine from the same projected gradients:
 
 ```bash
-uv run tda trackstar compute voice-study-1 \
+uv run tda attribution compute voice-study-1 \
   run-20260820T153012123456Z two-sided-4096 \
   --task-weight 0.9 --device cuda:0
 
@@ -153,7 +153,7 @@ The immutable attribution tensors are stored separately:
 
 ```text
 projections/<projection>/
-├── trackstar/
+├── attribution/
 │   ├── config.yaml
 │   └── attributions.pt
 └── projected-cosine/
@@ -164,7 +164,7 @@ Evaluate one attribution tensor by passing its path directly:
 
 ```bash
 uv run tda lds compute \
-  experiments/voice-study-1/training-runs/run-20260820T153012123456Z/projections/two-sided-4096/trackstar/attributions.pt --device cuda:0
+  experiments/voice-study-1/training-runs/run-20260820T153012123456Z/projections/two-sided-4096/attribution/attributions.pt --device cuda:0
 ```
 
 LDS uses the subset checkpoints from the same run and the same epoch as the
@@ -196,7 +196,7 @@ batching, differentiable talker inputs, and the per-example codebook objective
 are implemented. Generic LoRA injection, the core training and validation loop,
 per-epoch adapter and AdamW checkpoint serialization, per-example gradient
 collection, AdamW second-moment correction, Qwen LoRA block projection,
-TrackStar Hessian correction, projected cosine, unit normalization, and attribution
-scoring are also implemented, together with cohesive training runs, persisted
+task-weighted autocorrelation correction, projected cosine, unit normalization,
+and attribution scoring are also implemented, together with cohesive training runs, persisted
 projected training/query pools, and same-run, same-epoch LDS evaluation over subset
 models.
