@@ -13,12 +13,12 @@ from .projection import load_projected_pools
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:
-    attribution_parser = subparsers.add_parser(
-        "attribution", help="autocorrelation-corrected attribution"
+    trackstar_based_parser = subparsers.add_parser(
+        "trackstar-based", help="TrackStar-based attribution"
     )
-    attribution_subparsers = attribution_parser.add_subparsers(required=True)
+    trackstar_based_subparsers = trackstar_based_parser.add_subparsers(required=True)
 
-    compute_parser = attribution_subparsers.add_parser(
+    compute_parser = trackstar_based_subparsers.add_parser(
         "compute", help="compute an attribution matrix"
     )
     compute_parser.add_argument("experiment_name", metavar="experiment-name")
@@ -49,14 +49,18 @@ def run_compute(arguments: argparse.Namespace) -> None:
         / "projections"
         / arguments.projection_name
     )
-    method_directory = projection_directory / "attribution"
+    method_directory = projection_directory / "trackstar-based"
     if method_directory.exists():
-        raise CommandError(f"attribution already exists at {method_directory}")
+        raise CommandError(
+            f"TrackStar-based attribution already exists at {method_directory}"
+        )
 
     try:
         device = torch.device(arguments.device)
     except RuntimeError as error:
-        raise CommandError(f"invalid attribution device: {arguments.device}") from error
+        raise CommandError(
+            f"invalid TrackStar-based attribution device: {arguments.device}"
+        ) from error
     if device.type == "cuda" and not torch.cuda.is_available():
         raise CommandError("CUDA is not available")
 
@@ -78,7 +82,9 @@ def run_compute(arguments: argparse.Namespace) -> None:
         ValueError,
         yaml.YAMLError,
     ) as error:
-        raise CommandError(f"cannot load attribution inputs: {error}") from error
+        raise CommandError(
+            f"cannot load TrackStar-based attribution inputs: {error}"
+        ) from error
 
     try:
         eigenvalues, eigenvectors = torch.linalg.eigh(hessian)
@@ -120,7 +126,9 @@ def run_compute(arguments: argparse.Namespace) -> None:
         if not torch.all(torch.isfinite(attributions)):
             raise ValueError("attribution tensor contains non-finite values")
     except (RuntimeError, TypeError, ValueError) as error:
-        raise CommandError(f"cannot compute attribution: {error}") from error
+        raise CommandError(
+            f"cannot compute TrackStar-based attribution: {error}"
+        ) from error
 
     try:
         method_directory.mkdir(parents=True)
@@ -133,5 +141,9 @@ def run_compute(arguments: argparse.Namespace) -> None:
             attributions.cpu(),
         )
     except (FileExistsError, OSError, RuntimeError, yaml.YAMLError) as error:
-        raise CommandError(f"cannot save attribution: {error}") from error
-    print(f"attribution saved at {method_directory / 'attributions.pt'}")
+        raise CommandError(
+            f"cannot save TrackStar-based attribution: {error}"
+        ) from error
+    print(
+        f"TrackStar-based attribution saved at {method_directory / 'attributions.pt'}"
+    )

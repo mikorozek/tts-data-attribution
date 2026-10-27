@@ -18,7 +18,7 @@ tda
 │   │             --output-dimension N --seed N
 │   └── apply     <experiment> <run> <projection>
 │                 (--training-pool | --query-pool) [--device]
-├── attribution
+├── trackstar-based
 │   └── compute   <experiment> <run> <projection> --task-weight W [--device]
 ├── projected-cosine
 │   └── compute   <experiment> <run> <projection> [--device]
@@ -174,14 +174,14 @@ projections/<projection>/projected/
 Each artifact contains ordered utterance IDs and a floating matrix shaped
 `[examples, projection dimension]`.
 
-## `tda attribution compute`
+## `tda trackstar-based compute`
 
-The attribution command forms the task-weighted Gauss--Newton approximation and applies its
+The TrackStar-based command forms the task-weighted Gauss--Newton approximation and applies its
 pseudoinverse square root to both projected pools, normalizes each row, and
 writes:
 
 ```text
-projections/<projection>/attribution/
+projections/<projection>/trackstar-based/
 ├── config.yaml
 └── attributions.pt
 ```
@@ -207,7 +207,7 @@ misordered projected inputs and never replace an existing method directory.
 
 ```bash
 tda lds compute \
-  experiments/EXPERIMENT/training-runs/RUN/projections/PROJECTION/attribution/attributions.pt --device cuda:0
+  experiments/EXPERIMENT/training-runs/RUN/projections/PROJECTION/trackstar-based/attributions.pt --device cuda:0
 ```
 
 The path determines the experiment, run, projection, method, and output. The
@@ -225,7 +225,7 @@ the arithmetic mean across queries. It writes only that finite scalar beside the
 input:
 
 ```text
-attribution/lds.pt
+trackstar-based/lds.pt
 projected-cosine/lds.pt
 ```
 

@@ -57,7 +57,7 @@ def create_projected_pools(root: Path) -> Path:
 
 def compute_arguments(task_weight: str = "0.5") -> list[str]:
     return [
-        "attribution",
+        "trackstar-based",
         "compute",
         "study",
         "run-1",
@@ -69,7 +69,7 @@ def compute_arguments(task_weight: str = "0.5") -> list[str]:
     ]
 
 
-def test_attribution_compute_uses_a_pseudoinverse_for_a_singular_hessian(
+def test_trackstar_based_compute_uses_a_pseudoinverse_for_a_singular_hessian(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -79,15 +79,15 @@ def test_attribution_compute_uses_a_pseudoinverse_for_a_singular_hessian(
     assert main(compute_arguments()) == 0
 
     result = torch.load(
-        projection / "attribution" / "attributions.pt", weights_only=True
+        projection / "trackstar-based" / "attributions.pt", weights_only=True
     )
     torch.testing.assert_close(result, torch.ones(2, 1))
-    assert yaml.safe_load((projection / "attribution" / "config.yaml").read_text()) == {
-        "task_weight": 0.5
-    }
+    assert yaml.safe_load(
+        (projection / "trackstar-based" / "config.yaml").read_text()
+    ) == {"task_weight": 0.5}
 
 
-def test_attribution_compute_rejects_projected_ids_outside_the_plan(
+def test_trackstar_based_compute_rejects_projected_ids_outside_the_plan(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -102,17 +102,17 @@ def test_attribution_compute_rejects_projected_ids_outside_the_plan(
     assert main(compute_arguments()) == 1
 
     assert "query IDs differ" in capsys.readouterr().err
-    assert not (projection / "attribution").exists()
+    assert not (projection / "trackstar-based").exists()
 
 
-def test_attribution_compute_refuses_to_replace_its_method_directory(
+def test_trackstar_based_compute_refuses_to_replace_its_method_directory(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     monkeypatch.chdir(tmp_path)
     projection = create_projected_pools(tmp_path)
-    output = projection / "attribution"
+    output = projection / "trackstar-based"
     output.mkdir()
 
     assert main(compute_arguments()) == 1
@@ -120,7 +120,7 @@ def test_attribution_compute_refuses_to_replace_its_method_directory(
     assert "already exists" in capsys.readouterr().err
 
 
-def test_attribution_compute_rejects_tensor_rows_that_do_not_match_ids(
+def test_trackstar_based_compute_rejects_tensor_rows_that_do_not_match_ids(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -135,10 +135,10 @@ def test_attribution_compute_rejects_tensor_rows_that_do_not_match_ids(
     assert main(compute_arguments()) == 1
 
     assert "dimensions or dtype are invalid" in capsys.readouterr().err
-    assert not (projection / "attribution").exists()
+    assert not (projection / "trackstar-based").exists()
 
 
-def test_attribution_normalization_accepts_nonzero_norm_below_machine_epsilon(
+def test_trackstar_based_normalization_accepts_nonzero_norm_below_machine_epsilon(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -154,6 +154,6 @@ def test_attribution_normalization_accepts_nonzero_norm_below_machine_epsilon(
     assert main(compute_arguments("1.0")) == 0
 
     result = torch.load(
-        projection / "attribution" / "attributions.pt", weights_only=True
+        projection / "trackstar-based" / "attributions.pt", weights_only=True
     )
     torch.testing.assert_close(result, torch.ones(2, 1))
